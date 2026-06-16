@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "aoc",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["app.py"],
+      "autoPort": true,
+      "port": 8080
+    },
+    {
+      "name": "aoc-test",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["scripts/preview_test.py"],
+      "port": 8081
+    }
+  ]
+}

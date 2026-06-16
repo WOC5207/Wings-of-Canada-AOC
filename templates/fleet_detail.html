@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ aircraft['registration'] }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>
+    <span class="mono">{{ aircraft['registration'] }}</span>
+    <span class="badge status-{{ aircraft['status'] }}">{{ aircraft['status'] }}</span>
+  </h1>
+  <div class="actions">
+    {% if g.user and g.user['role'] == 'admin' %}
+    <a class="btn" href="{{ url_for('fleet.edit', aircraft_id=aircraft['id']) }}">Edit</a>
+    {% endif %}
+    {% if g.user %}
+    <a class="btn btn-ghost" href="{{ url_for('fleet.index') }}">← Back to fleet</a>
+    {% else %}
+    <a class="btn btn-ghost" href="{{ url_for('main.home') }}">← Back to home</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>Images</h2>
+    {% if images %}
+    <div class="detail-gallery">
+      {% for img in images %}
+      <img src="{{ url_for('fleet.image', image_id=img['id']) }}" alt="{{ aircraft['registration'] }}">
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No images have been added for this airframe yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Details</h2>
+    <div class="detail-list">
+      <div class="dl-row"><span class="muted">Type</span><span class="mono">{{ aircraft['icao_type'] }}</span></div>
+      <div class="dl-row"><span class="muted">Variant</span><span>{{ aircraft['variant'] or '—' }}</span></div>
+      <div class="dl-row"><span class="muted">Configuration</span>
+        <span class="badge load-{{ aircraft['load_type'] }}">{{ {'cargo': 'Cargo', 'charter': 'Charter'}.get(aircraft['load_type'], 'PAX') }}</span></div>
+      <div class="dl-row"><span class="muted">Capacity</span>
+        <span class="mono">{% if aircraft['load_type'] == 'cargo' %}{{ '{:,}'.format(aircraft['cargo_capacity_kg']) }} kg{% else %}{{ aircraft['pax_capacity'] }} seats{% endif %}</span></div>
+      <div class="dl-row"><span class="muted">Status</span>
+        <span class="badge status-{{ aircraft['status'] }}">{{ aircraft['status'] }}</span></div>
+      {% if aircraft['notes'] %}
+      <div class="dl-row"><span class="muted">Notes</span><span>{{ aircraft['notes'] }}</span></div>
+      {% endif %}
+    </div>
+    {% if aircraft['simbrief_url'] or aircraft['livery_url'] %}
+    <div class="actions detail-links">
+      {% if aircraft['simbrief_url'] %}<a class="btn btn-sm" href="{{ aircraft['simbrief_url'] }}" target="_blank" rel="noopener">SimBrief</a>{% endif %}
+      {% if aircraft['livery_url'] %}<a class="btn btn-sm" href="{{ aircraft['livery_url'] }}" target="_blank" rel="noopener">Livery</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

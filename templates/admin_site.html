@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Site admin{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Site administration</h1>
+  <a class="btn" href="{{ url_for('main.home') }}">View landing page</a>
+</div>
+
+<div class="card narrow-form">
+  <h2>NOTAM banners</h2>
+  <p class="muted small">Site-wide announcements shown under the top bar on every
+    page. You can have several at once — they stack with the most severe on top.</p>
+
+  {% if notams %}
+  <div class="notam-admin-list">
+    {% for n in notams %}
+    <div class="notam notam-{{ n.level }}" style="border-radius:8px;border:1px solid;">
+      <span class="notam-tag mono">NOTAM</span>
+      <span class="notam-text">{{ n.text }}</span>
+      <form method="post" action="{{ url_for('admin.delete_notam', notam_id=n.id) }}"
+            class="notam-del" onsubmit="return confirm('Remove this NOTAM?');">
+        <button class="btn btn-danger btn-sm" type="submit" aria-label="Remove NOTAM">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No NOTAMs are currently active.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('admin.add_notam') }}" class="stack" style="margin-top:16px;">
+    <label>
+      <span class="lbl">New message</span>
+      <textarea name="notam_text" rows="2" maxlength="300"
+                placeholder="e.g. Group flight Friday 2300Z — YVR → CYYZ, all welcome."></textarea>
+    </label>
+    <label>
+      <span class="lbl">Severity</span>
+      <select name="notam_level">
+        <option value="info">Info</option>
+        <option value="warning">Warning</option>
+        <option value="critical">Critical</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">Add NOTAM</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
+  <h2>Landing cover</h2>
+  {% if cover %}
+    <div class="cover-preview">
+      {% if cover.type == 'video' %}
+        <video src="{{ url_for('main.cover', v=cover.version) }}" muted autoplay loop playsinline></video>
+      {% else %}
+        <img src="{{ url_for('main.cover', v=cover.version) }}" alt="Current landing cover">
+      {% endif %}
+    </div>
+    <form method="post" action="{{ url_for('admin.remove_cover') }}"
+          onsubmit="return confirm('Remove the current landing cover?');">
+      <button class="btn btn-danger" type="submit">Remove cover</button>
+    </form>
+  {% else %}
+    <p class="muted">No cover set — the landing page shows a default sky gradient.</p>
+  {% endif %}
+  <p class="muted small" style="margin-top:14px;">Image (JPG, PNG, WEBP, GIF) or
+    short video (MP4, WEBM), up to 64&nbsp;MB. Landscape works best — the media is
+    cropped to fill the screen, with text sitting bottom-left.</p>
+  <form method="post" action="{{ url_for('admin.upload_cover') }}"
+        enctype="multipart/form-data" class="stack">
+    <label>
+      <span class="lbl">Cover file</span>
+      <input type="file" name="cover" accept="image/*,video/mp4,video/webm" required>
+    </label>
+    <button class="btn btn-primary" type="submit">Upload cover</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
+  <h2>Cover headings</h2>
+  <p class="muted small">The text shown over the cover on the landing page.</p>
+  <form method="post" action="{{ url_for('admin.update_hero') }}" class="stack">
+    <label>
+      <span class="lbl">Heading line 1</span>
+      <input name="title1" value="{{ hero.title1 }}" maxlength="80">
+    </label>
+    <label>
+      <span class="lbl">Heading line 2 <span class="muted">(optional)</span></span>
+      <input name="title2" value="{{ hero.title2 }}" maxlength="80">
+    </label>
+    <label>
+      <span class="lbl">Subtitle</span>
+      <input name="subtitle" value="{{ hero.subtitle }}" maxlength="160">
+    </label>
+    <button class="btn btn-primary" type="submit">Save headings</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
+  <h2>Footer text</h2>
+  <p class="muted small">The line shown at the bottom of every page. Leave blank
+    to restore the default.</p>
+  <form method="post" action="{{ url_for('admin.update_footer') }}" class="stack">
+    <label>
+      <span class="lbl">Footer</span>
+      <input name="footer_text" value="{{ footer_text }}" maxlength="160">
+    </label>
+    <button class="btn btn-primary" type="submit">Save footer</button>
+  </form>
+</div>
+{% endblock %}

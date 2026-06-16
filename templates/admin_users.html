@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Members{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Member management</h1>
+  <div class="actions">
+    <form class="searchbar" method="get" action="{{ url_for('admin.users') }}" role="search">
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input name="q" value="{{ q }}" placeholder="Search pilots…" autocomplete="off"
+             aria-label="Search pilots">
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('admin.new_user') }}">+ Add pilot</a>
+  </div>
+</div>
+
+<div class="roster-toolbar">
+  <span class="muted small">Sort by:</span>
+  {% set sorts = [('hours', 'Flight Hours'), ('flights', 'Flights Completed'), ('joined', 'Date Joined')] %}
+  {% for key, label in sorts %}
+    <a class="sort-btn {{ 'active' if sort == key }}"
+       href="{{ url_for('admin.users', sort=key, q=q or None) }}">
+      {{ label }}{% if sort == key %} <span class="sort-arrow">↓</span>{% endif %}
+    </a>
+  {% endfor %}
+</div>
+
+<div class="card">
+<div class="table-scroll">
+<table class="roster-table">
+  <thead>
+    <tr>
+      <th>Callsign</th><th>Rank</th><th>Flight Hours</th><th>Flights</th>
+      <th>Joined</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td>
+        <a class="mono strong roster-callsign" href="{{ url_for('pilots.profile', user_id=u['id']) }}">{{ u['callsign'] }}</a>
+        {% if u['name'] %}<div class="roster-name">{{ u['name'] }}</div>{% endif %}
+      </td>
+      <td><span class="badge {{ pilot_rank_class(u['total_flights'], u['total_minutes']) }}">{{ pilot_rank(u['total_flights'], u['total_minutes']) }}</span></td>
+      <td>
+        <span class="cell-metric mono">
+          <svg class="cell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          {{ u['total_minutes'] | hoursdec }}h
+        </span>
+      </td>
+      <td>
+        <span class="cell-metric mono">
+          <svg class="cell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5c1.5-1.5 2-3.5 1.5-4-.5-.5-2.5 0-4 1.5L13.5 8.5 5 6.7c-.4-.1-.8.1-1 .4l-.2.4c-.2.4-.1.9.3 1.1L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 4.7c.2.4.7.5 1.1.3l.4-.2c.3-.2.5-.6.4-1z"/></svg>
+          {{ u['total_flights'] }}
+        </span>
+      </td>
+      <td class="mono muted">{{ u['created_at'] | datefmt }}</td>
+      <td class="roster-actions">
+        <a class="icon-btn" title="View profile" href="{{ url_for('pilots.profile', user_id=u['id']) }}" aria-label="View {{ u['callsign'] }} profile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a class="icon-btn" title="Edit" href="{{ url_for('admin.edit_user', user_id=u['id']) }}" aria-label="Edit {{ u['callsign'] }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </a>
+        {% if u['id'] != g.user['id'] %}
+        <form method="post" action="{{ url_for('admin.delete_user', user_id=u['id']) }}"
+              onsubmit="return confirm('Remove {{ u['callsign'] }} and their entire logbook? This cannot be undone.');">
+          <button class="icon-btn icon-danger" type="submit" title="Remove" aria-label="Remove {{ u['callsign'] }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">No pilots match “{{ q }}”.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+
+<p class="muted small">
+  The arrow opens a pilot's public profile; the pencil opens their record to edit
+  name, email, tier, join date and credited totals. Credited flights and hours are
+  added on top of what a pilot has actually logged — their logbook is never changed.
+</p>
+{% endblock %}

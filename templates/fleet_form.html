@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit ' + aircraft['registration'] if aircraft else 'Add aircraft' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ 'Edit ' + aircraft['registration'] if aircraft else 'Add aircraft' }}</h1>
+</div>
+
+{% if aircraft %}
+{# EDIT: aircraft fields and image management sit in separate forms side by side. #}
+<div class="fleet-edit-grid">
+  <div class="card narrow-form">
+    <form method="post" class="stack">
+      {% include "_fleet_fields.html" %}
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Save changes</button>
+        <a class="btn btn-ghost" href="{{ url_for('fleet.index') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Aircraft images <span class="muted">({{ images | length }} / 5)</span></h2>
+    {% if images %}
+    <div class="img-manage-grid">
+      {% for img in images %}
+      <div class="img-manage">
+        <img src="{{ url_for('fleet.image', image_id=img['id']) }}" alt="{{ aircraft['registration'] }}">
+        <form method="post" action="{{ url_for('fleet.delete_image', image_id=img['id']) }}"
+              onsubmit="return confirm('Remove this image?');">
+          <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No images yet — add up to 5 photos of this airframe.</p>
+    {% endif %}
+
+    {% if images | length < 5 %}
+    <form method="post" action="{{ url_for('fleet.upload_image', aircraft_id=aircraft['id']) }}"
+          enctype="multipart/form-data" class="stack image-upload">
+      <label>
+        <span class="lbl">Add an image <span class="muted">(JPG, PNG, WEBP, GIF)</span></span>
+        <input type="file" name="image" accept="image/*" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Upload image</button>
+    </form>
+    {% else %}
+    <p class="muted small image-upload">Maximum of 5 images reached — remove one to add another.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+{# ADD: one multipart form so photos are saved together with the new aircraft. #}
+<form method="post" enctype="multipart/form-data">
+  <div class="fleet-edit-grid">
+    <div class="card narrow-form">
+      <div class="stack">
+        {% include "_fleet_fields.html" %}
+      </div>
+      <div class="actions" style="margin-top: 16px;">
+        <button class="btn btn-primary" type="submit">Add to fleet</button>
+        <a class="btn btn-ghost" href="{{ url_for('fleet.index') }}">Cancel</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Aircraft images</h2>
+      <p class="muted small">Attach up to 5 photos (JPG, PNG, WEBP, GIF). You can
+        add or remove more after the aircraft is created.</p>
+      <label class="image-upload">
+        <span class="lbl">Images <span class="muted">(select up to 5)</span></span>
+        <input type="file" name="images" accept="image/*" multiple>
+      </label>
+    </div>
+  </div>
+</form>
+{% endif %}
+
+<script>
+(function () {
+  var label = document.getElementById('capacity-label');
+  var cargo = document.getElementById('lt-cargo');
+  function sync() {
+    // Charter aircraft carry passengers, so they use seats like a PAX jet.
+    label.textContent = cargo.checked
+      ? 'Cargo capacity (kg)' : 'Passenger capacity (seats)';
+  }
+  ['lt-pax', 'lt-cargo', 'lt-charter'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', sync);
+  });
+  sync();
+})();
+</script>
+{% endblock %}

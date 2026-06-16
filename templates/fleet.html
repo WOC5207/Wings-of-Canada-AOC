@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Fleet{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Fleet</h1>
+  {% if g.user['role'] == 'admin' %}
+  <div class="actions"><a class="btn btn-primary" href="{{ url_for('fleet.new') }}">+ Add aircraft</a></div>
+  {% endif %}
+</div>
+
+<div class="card">
+{% if fleet %}
+<table>
+  <thead>
+    <tr>
+      <th>Registration</th><th>Type</th><th>Variant</th><th>Config</th>
+      <th>Capacity</th><th>Status</th><th>Links</th>
+      {% if g.user['role'] == 'admin' %}<th></th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for a in fleet %}
+    <tr>
+      <td class="mono strong"><a href="{{ url_for('fleet.detail', aircraft_id=a['id']) }}">{{ a['registration'] }}</a></td>
+      <td class="mono">{{ a['icao_type'] }}</td>
+      <td>{{ a['variant'] or '—' }}</td>
+      <td><span class="badge load-{{ a['load_type'] }}">{{ {'cargo': 'Cargo', 'charter': 'Charter'}.get(a['load_type'], 'PAX') }}</span></td>
+      <td class="mono">
+        {%- if a['load_type'] == 'cargo' -%}
+          {{ '{:,}'.format(a['cargo_capacity_kg']) }} kg
+        {%- else -%}
+          {{ a['pax_capacity'] }} seats
+        {%- endif -%}
+      </td>
+      <td><span class="badge status-{{ a['status'] }}">{{ a['status'] }}</span></td>
+      <td class="row-actions">
+        {% if a['simbrief_url'] %}<a class="btn btn-sm" href="{{ a['simbrief_url'] }}" target="_blank" rel="noopener">SimBrief</a>{% endif %}
+        {% if a['livery_url'] %}<a class="btn btn-sm" href="{{ a['livery_url'] }}" target="_blank" rel="noopener">Livery</a>{% endif %}
+        {% if not a['simbrief_url'] and not a['livery_url'] %}<span class="muted">—</span>{% endif %}
+      </td>
+      {% if g.user['role'] == 'admin' %}
+      <td class="row-actions">
+        <a class="btn btn-sm" href="{{ url_for('fleet.edit', aircraft_id=a['id']) }}">Edit</a>
+        <form method="post" action="{{ url_for('fleet.delete', aircraft_id=a['id']) }}"
+              onsubmit="return confirm('Remove {{ a['registration'] }} from the fleet?');">
+          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">The hangar is empty.
+{% if g.user['role'] == 'admin' %}Use “Add aircraft” to bring in the first airframe.{% endif %}</p>
+{% endif %}
+</div>
+{% endblock %}

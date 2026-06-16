@@ -1,0 +1,53 @@
+{# Aircraft form fields, shared by the add and edit pages. Expects `form`. #}
+<div class="field-row">
+  <label>Registration
+    <input name="registration" value="{{ form['registration'] }}" required
+           class="mono upper" placeholder="C-FWOC">
+  </label>
+  <label>Aircraft ICAO type
+    <input name="icao_type" value="{{ form['icao_type'] }}" required
+           class="mono upper" maxlength="4" placeholder="B38M">
+  </label>
+</div>
+<label>Variant
+  <input name="variant" value="{{ form['variant'] }}" placeholder="737 MAX 8, Dash 8 Q400…">
+</label>
+<div class="field-row">
+  <label>Aircraft type
+    <div class="segmented segmented-stacked" role="radiogroup"
+         aria-label="Passenger, cargo or charter aircraft">
+      <input type="radio" id="lt-pax" name="load_type" value="pax"
+             {{ 'checked' if form['load_type'] not in ('cargo', 'charter') }}>
+      <label for="lt-pax"><span class="seg-icon">✈</span><span>Passenger</span></label>
+      <input type="radio" id="lt-cargo" name="load_type" value="cargo"
+             {{ 'checked' if form['load_type'] == 'cargo' }}>
+      <label for="lt-cargo"><span class="seg-icon">📦</span><span>Cargo</span></label>
+      <input type="radio" id="lt-charter" name="load_type" value="charter"
+             {{ 'checked' if form['load_type'] == 'charter' }}>
+      <label for="lt-charter"><span class="seg-icon">⭐</span><span>Charter</span></label>
+    </div>
+  </label>
+  <label>
+    <span id="capacity-label">Passenger capacity (seats)</span>
+    <input id="capacity" name="capacity" value="{{ form['capacity'] }}"
+           inputmode="numeric" required placeholder="0">
+  </label>
+</div>
+<label>Status
+  <select name="status">
+    {% for s in ('active', 'maintenance', 'retired') %}
+    <option value="{{ s }}" {{ 'selected' if form['status'] == s }}>{{ s | capitalize }}</option>
+    {% endfor %}
+  </select>
+</label>
+<label>SimBrief airframe link <span class="muted">(optional)</span>
+  <input name="simbrief_url" value="{{ form['simbrief_url'] }}"
+         placeholder="https://dispatch.simbrief.com/airframes/share/…">
+</label>
+<label>Livery download link <span class="muted">(optional)</span>
+  <input name="livery_url" value="{{ form['livery_url'] }}"
+         placeholder="https://flightsim.to/file/…">
+</label>
+<label>Notes <span class="muted">(optional)</span>
+  <input name="notes" value="{{ form['notes'] }}" maxlength="200">
+</label>

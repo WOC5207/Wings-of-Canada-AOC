@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+
+# Machine-specific Claude Code permissions (keep launch.json shared)
+.claude/settings.local.json

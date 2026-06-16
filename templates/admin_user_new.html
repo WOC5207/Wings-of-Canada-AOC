@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Add pilot{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Add a pilot</h1>
+  <a class="btn btn-ghost" href="{{ url_for('admin.users') }}">← Back to members</a>
+</div>
+
+<div class="card narrow-form">
+  <p class="muted small">Add a member directly — they are not signed in. Email is
+    optional (handy for test accounts); leave the password blank to mint a
+    temporary one you can share privately.</p>
+  <form method="post" action="{{ url_for('admin.create_user') }}" class="stack">
+    <label>
+      <span class="lbl">Full name <span class="muted">(optional)</span></span>
+      <input name="name" placeholder="e.g. Jane Doe">
+    </label>
+    <div class="field-row">
+      <label>
+        <span class="lbl">Email address <span class="muted">(optional)</span></span>
+        <input type="email" name="email" placeholder="pilot@example.com">
+      </label>
+      <label>
+        <span class="lbl">Callsign</span>
+        <div class="callsign-input">
+          <span class="callsign-prefix">WOC</span>
+          <input name="callsign_digits" inputmode="numeric" pattern="\d{1,4}"
+                 maxlength="4" placeholder="123" title="1 to 4 digits" required>
+        </div>
+      </label>
+    </div>
+    <div class="field-row">
+      <label>
+        <span class="lbl">Tier</span>
+        <select name="role">
+          <option value="standard" selected>Standard</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </label>
+      <label>
+        <span class="lbl">Password <span class="muted">(optional)</span></span>
+        <input type="password" name="password" minlength="8"
+               placeholder="Blank = temporary password">
+      </label>
+    </div>
+    <label>
+      <span class="lbl">Confirm password <span class="muted">(only if set above)</span></span>
+      <input type="password" name="confirm" minlength="8">
+    </label>
+    <button class="btn btn-primary" type="submit">Create account</button>
+  </form>
+</div>
+
+<p class="muted small">
+  Tiers — <strong>Standard</strong>: fly scheduled routes, file charters and
+  log flights · <strong>Administrator</strong>: everything, plus creating
+  scheduled routes and fleet and member management.
+</p>
+{% endblock %}

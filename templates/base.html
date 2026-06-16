@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AOC{% endblock %} · Wings of Canada</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='80' font-size='80'&gt;🍁&lt;/text&gt;&lt;/svg&gt;">
+  <script>
+    /* Apply the saved theme before first paint to avoid a flash. */
+    (function () {
+      try {
+        var t = localStorage.getItem('aoc-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+<div class="site-top">
+<header class="topbar">
+  <a class="brand" href="{{ url_for('main.home') }}" title="Wings of Canada — home">
+    <span class="leaf">🍁</span>
+    <div>
+      <div class="brand-name">Wings of Canada</div>
+      <div class="brand-sub">Airline Operations Centre ·
+        <span id="utc-clock" class="mono">--:--</span> UTC</div>
+    </div>
+  </a>
+  <button id="theme-toggle" class="btn btn-ghost btn-sm theme-toggle" type="button"
+          title="Toggle light / dark theme" aria-label="Toggle light / dark theme">🌙</button>
+  {% if g.user %}
+  <nav class="nav">
+    <a href="{{ url_for('main.dashboard') }}"
+       class="{{ 'active' if request.endpoint == 'main.dashboard' }}">Dashboard</a>
+    <a href="{{ url_for('dispatch.routes') }}"
+       class="{{ 'active' if request.blueprint == 'dispatch' }}">Dispatch</a>
+    <a href="{{ url_for('fleet.index') }}"
+       class="{{ 'active' if request.blueprint == 'fleet' }}">Fleet</a>
+    <a href="{{ url_for('pilots.roster') }}"
+       class="{{ 'active' if request.blueprint == 'pilots' }}">Pilots</a>
+    {% if g.user['role'] == 'admin' %}
+    {% set member_eps = ['admin.users', 'admin.new_user', 'admin.create_user',
+                         'admin.edit_user', 'admin.reset_password', 'admin.delete_user'] %}
+    {% set invite_eps = ['admin.invites', 'admin.create_invite', 'admin.delete_invite'] %}
+    <div class="nav-dropdown" data-dropdown>
+      <button type="button" class="nav-trigger {{ 'active' if request.blueprint == 'admin' }}"
+              aria-haspopup="true" aria-expanded="false">Admin ▾</button>
+      <div class="nav-menu" role="menu">
+        <a href="{{ url_for('admin.users') }}"
+           class="{{ 'active' if request.endpoint in member_eps }}">Member management</a>
+        <a href="{{ url_for('admin.invites') }}"
+           class="{{ 'active' if request.endpoint in invite_eps }}">Invitation codes</a>
+        <a href="{{ url_for('admin.site') }}"
+           class="{{ 'active' if request.endpoint not in member_eps and request.endpoint not in invite_eps and request.blueprint == 'admin' }}">Site admin</a>
+      </div>
+    </div>
+    {% endif %}
+  </nav>
+  <div class="userbox">
+    <a class="user-callsign" href="{{ url_for('pilots.me') }}">{{ g.user['callsign'] }}</a>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="userbox">
+    <a class="btn btn-ghost" href="{{ url_for('auth.login') }}">Sign in</a>
+    <a class="btn btn-primary" href="{{ url_for('auth.register') }}">Join the VA</a>
+  </div>
+  {% endif %}
+</header>
+
+{% for notam in notams %}
+<div class="notam notam-{{ notam.level }}" role="alert">
+  <span class="notam-tag mono">NOTAM</span>
+  <span class="notam-text">{{ notam.text }}</span>
+</div>
+{% endfor %}
+</div>
+
+{% block main %}
+<main class="page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+{% endblock %}
+
+<footer class="footer">{{ footer_text }}</footer>
+<script>
+(function () {
+  var el = document.getElementById('utc-clock');
+  function two(n) { return (n < 10 ? '0' : '') + n; }
+  function tick() {
+    var d = new Date();
+    el.textContent = two(d.getUTCHours()) + ':' + two(d.getUTCMinutes()) +
+                     ':' + two(d.getUTCSeconds());
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+(function () {
+  var btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  function current() {
+    return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  }
+  function render() {
+    // Show the icon for the mode you'd switch TO.
+    btn.textContent = current() === 'light' ? '🌙' : '☀️';
+  }
+  render();
+  btn.addEventListener('click', function () {
+    var next = current() === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('aoc-theme', next); } catch (e) {}
+    render();
+  });
+})();
+(function () {
+  // Nav dropdowns: toggle on click, close on outside click or Escape.
+  var dropdowns = document.querySelectorAll('[data-dropdown]');
+  function closeAll() {
+    dropdowns.forEach(function (dd) {
+      dd.classList.remove('open');
+      var t = dd.querySelector('.nav-trigger');
+      if (t) t.setAttribute('aria-expanded', 'false');
+    });
+  }
+  dropdowns.forEach(function (dd) {
+    var trigger = dd.querySelector('.nav-trigger');
+    if (!trigger) return;
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var willOpen = !dd.classList.contains('open');
+      closeAll();
+      if (willOpen) {
+        dd.classList.add('open');
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
+  document.addEventListener('click', closeAll);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeAll();
+  });
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

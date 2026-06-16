@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+{% set first_name = (g.user['name'] or g.user['callsign']).split()[0] %}
+<div class="welcome">
+  <div class="welcome-title">Welcome, {{ first_name }}</div>
+  <div class="welcome-sub">Your journey begins now.</div>
+</div>
+
+<div class="page-head">
+  <h1>Operations dashboard</h1>
+  <div class="actions">
+    {% if g.user['role'] == 'admin' %}
+    <a class="btn btn-primary" href="{{ url_for('dispatch.new_route') }}">+ New route</a>
+    {% endif %}
+    <a class="btn" href="{{ url_for('dispatch.routes') }}">Fly the network</a>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="stat-value">{{ stats.pilots }}</div><div class="stat-label">Members</div></div>
+  <div class="stat"><div class="stat-value">{{ stats.fleet }}</div><div class="stat-label">Active aircraft</div></div>
+  <div class="stat"><div class="stat-value">{{ stats.routes }}</div><div class="stat-label">Routes</div></div>
+  <div class="stat"><div class="stat-value">{{ stats.hours | hoursdec }}</div><div class="stat-label">Fleet-wide hours</div></div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>Latest flights <span class="muted">across the network</span></h2>
+    {% if recent_pireps %}
+    <div class="flights-scroll">
+    <table>
+      <thead><tr><th>Pilot</th><th>Flight</th><th>Route</th><th>Time</th></tr></thead>
+      <tbody>
+      {% for p in recent_pireps %}
+        <tr>
+          <td>{{ p['pilot'] }}</td>
+          <td class="mono">{{ p['flight_no'] }}</td>
+          <td class="mono">{{ p['dep_icao'] }} → {{ p['arr_icao'] }}</td>
+          <td class="mono">{{ p['flight_time_min'] | hours }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}<p class="muted">No flights logged yet.</p>{% endif %}
+  </div>
+
+  <div class="col-stack">
+    <div class="card">
+      <h2>Top pilots <span class="muted">by flight hours</span></h2>
+      {% if top_pilots %}
+      <ol class="leaderboard">
+        {% for p in top_pilots %}
+        <li>
+          <span class="lb-pos mono">{{ loop.index }}</span>
+          <div class="lb-main">
+            {% if g.user['role'] == 'admin' %}
+            <a class="mono strong" href="{{ url_for('pilots.profile', user_id=p['id']) }}">{{ p['callsign'] }}</a>
+            {% else %}
+            <span class="mono strong">{{ p['callsign'] }}</span>
+            {% endif %}
+            <span class="badge {{ pilot_rank_class(p['flights'], p['minutes']) }}">{{ pilot_rank(p['flights'], p['minutes']) }}</span>
+          </div>
+          <span class="lb-hours mono">{{ p['minutes'] | hoursdec }}h</span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}<p class="muted">No flight hours logged yet.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Fleet status</h2>
+      <div class="fleet-status-list">
+        <div class="fsl-row"><span class="badge status-active">Active</span><span class="mono">{{ fleet_status.active }}</span></div>
+        <div class="fsl-row"><span class="badge status-maintenance">Maintenance</span><span class="mono">{{ fleet_status.maintenance }}</span></div>
+        <div class="fsl-row"><span class="badge status-retired">Retired</span><span class="mono">{{ fleet_status.retired }}</span></div>
+        <div class="fsl-total"><span class="strong">Total fleet</span><span class="mono strong">{{ fleet_status.active + fleet_status.maintenance + fleet_status.retired }}</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

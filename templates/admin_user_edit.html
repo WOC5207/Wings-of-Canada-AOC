@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ user['callsign'] }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>
+    <span class="mono">{{ user['callsign'] }}</span>
+    {% if user['name'] %}<span class="muted">· {{ user['name'] }}</span>{% endif %}
+    <span class="badge role-{{ user['role'] }}">{{ user['role'] | rolelabel }}</span>
+  </h1>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('pilots.profile', user_id=user['id']) }}">View profile</a>
+    <a class="btn btn-ghost" href="{{ url_for('admin.users') }}">← Back to members</a>
+  </div>
+</div>
+
+<div class="card narrow-form">
+  <h2>Pilot details</h2>
+  <form method="post" action="{{ url_for('admin.edit_user', user_id=user['id']) }}" class="stack">
+    <label>
+      <span class="lbl">Full name <span class="muted">(optional)</span></span>
+      <input name="name" value="{{ user['name'] or '' }}" placeholder="e.g. Jane Doe">
+    </label>
+    <div class="field-row">
+      <label>
+        <span class="lbl">Email address <span class="muted">(optional)</span></span>
+        <input type="email" name="email" value="{{ user['email'] or '' }}" placeholder="pilot@example.com">
+      </label>
+      <label>
+        <span class="lbl">Tier</span>
+        <select name="role">
+          <option value="standard" {{ 'selected' if user['role'] == 'standard' }}>Standard</option>
+          <option value="admin"    {{ 'selected' if user['role'] == 'admin' }}>Administrator</option>
+        </select>
+      </label>
+    </div>
+    <div class="field-row">
+      <label>
+        <span class="lbl">Join date</span>
+        <input type="date" name="join_date" value="{{ user['created_at'][:10] }}">
+      </label>
+      <label>
+        <span class="lbl">Credited totals</span>
+        <div class="adjust-cell-row">
+          <span class="adjust-cell"><input name="adj_flights" value="{{ user['adj_flights'] }}" inputmode="numeric" class="mini-input"><span class="mini-label">flts</span></span>
+          <span class="adjust-cell"><input name="adj_hours" value="{{ user['adj_minutes'] // 60 }}" inputmode="numeric" class="mini-input"><span class="mini-label">h</span></span>
+          <span class="adjust-cell"><input name="adj_minutes" value="{{ '%02d' % (user['adj_minutes'] % 60) }}" inputmode="numeric" class="mini-input"><span class="mini-label">m</span></span>
+        </div>
+      </label>
+    </div>
+    <p class="muted small">Credited totals are added on top of the logbook (never
+      changed): {{ logged_flights }} flights · {{ logged_minutes | hours }} logged.</p>
+    <button class="btn btn-primary" type="submit">Save changes</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
+  <h2>Account actions</h2>
+  <div class="row-actions">
+    <form method="post" action="{{ url_for('admin.reset_password', user_id=user['id']) }}"
+          onsubmit="return confirm('Generate a temporary password for {{ user['callsign'] }}?');">
+      <button class="btn" type="submit">Reset password</button>
+    </form>
+    {% if user['id'] != g.user['id'] %}
+    <form method="post" action="{{ url_for('admin.delete_user', user_id=user['id']) }}"
+          onsubmit="return confirm('Remove {{ user['callsign'] }} and their entire logbook? This cannot be undone.');">
+      <button class="btn btn-danger" type="submit">Remove pilot</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

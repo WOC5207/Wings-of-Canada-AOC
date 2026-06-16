@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card narrow">
+    <h1>Crew sign in</h1>
+    <p class="muted">Welcome back to the Wings of Canada Operations Centre.</p>
+    <form method="post" class="stack">
+      <label>Email or callsign
+        <input name="ident" value="{{ ident }}" required autofocus
+               placeholder="you@example.com or WOC123">
+      </label>
+      <label>Password
+        <input type="password" name="password" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+    <p class="muted">New pilot? <a href="{{ url_for('auth.register') }}">Register for a callsign</a>.</p>
+  </div>
+</div>
+{% endblock %}

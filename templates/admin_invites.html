@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Invitation codes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Invitation codes</h1>
+  <form method="post" action="{{ url_for('admin.create_invite') }}">
+    <button class="btn btn-primary" type="submit">Generate code</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
+  <p class="muted small">Sign-ups are currently invite-only. Generate a single-use
+    code and share it privately with a prospective member — they enter it on the
+    registration form. Each code works once; revoke any you no longer need.</p>
+
+  {% if codes %}
+  <div class="table-scroll">
+  <table class="roster-table">
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Created</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in codes %}
+      <tr>
+        <td class="mono">{{ c.code }}</td>
+        <td>{{ c.created_at | datefmt }}</td>
+        <td>
+          {% if c.used_by %}
+            <span class="muted">Used by {{ c.used_by_callsign or 'a removed member' }}
+              {% if c.used_at %}· {{ c.used_at | datefmt }}{% endif %}</span>
+          {% else %}
+            <span class="badge">Available</span>
+          {% endif %}
+        </td>
+        <td class="row-actions">
+          {% if not c.used_by %}
+          <form method="post" action="{{ url_for('admin.delete_invite', code_id=c.id) }}"
+                onsubmit="return confirm('Revoke this invitation code?');">
+            <button class="btn btn-danger btn-sm" type="submit">Revoke</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No invitation codes yet. Generate one to let a new member sign up.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Pilots{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Pilot roster</h1>
+</div>
+
+<div class="card">
+<table>
+  <thead>
+    <tr><th>Callsign</th><th>Rank</th><th>Flights</th><th>Hours</th>{% if g.user['role'] == 'admin' %}<th>Joined</th>{% endif %}</tr>
+  </thead>
+  <tbody>
+  {% for p in pilots %}
+    <tr>
+      <td>
+        {% if g.user['role'] == 'admin' %}
+        <a class="mono strong" href="{{ url_for('pilots.profile', user_id=p['id']) }}">{{ p['callsign'] }}</a>
+        {% else %}
+        <span class="mono strong">{{ p['callsign'] }}</span>
+        {% endif %}
+      </td>
+      <td><span class="badge {{ pilot_rank_class(p['flights'], p['minutes']) }}">{{ pilot_rank(p['flights'], p['minutes']) }}</span></td>
+      <td class="mono">{{ p['flights'] }}</td>
+      <td class="mono">{{ p['minutes'] | hoursdec }}</td>
+      {% if g.user['role'] == 'admin' %}<td class="mono">{{ p['created_at'][:10] }}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

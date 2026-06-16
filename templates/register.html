@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card narrow">
+    <h1>Join Wings of Canada</h1>
+    <p class="muted">Pick your personal callsign — WOC followed by up to four digits.</p>
+    <form method="post" class="stack">
+      <div class="field-row">
+        <label>Preferred first name
+          <input name="first_name" value="{{ first_name }}" required maxlength="40"
+                 placeholder="Jane">
+        </label>
+        <label>Preferred last name
+          <input name="last_name" value="{{ last_name }}" required maxlength="40"
+                 placeholder="Smith">
+        </label>
+      </div>
+      <label>Email address
+        <input type="email" name="email" value="{{ email }}" required>
+      </label>
+      <label>Callsign
+        <div class="callsign-input">
+          <span class="callsign-prefix">WOC</span>
+          <input name="callsign_digits" value="{{ digits }}" required
+                 inputmode="numeric" pattern="\d{1,4}" maxlength="4"
+                 placeholder="123" title="1 to 4 digits">
+        </div>
+      </label>
+      <label>Password <span class="muted">(at least 8 characters)</span>
+        <input type="password" name="password" minlength="8" required>
+      </label>
+      <label>Confirm password
+        <input type="password" name="confirm" minlength="8" required>
+      </label>
+      <label>Invitation code
+        <input name="invite" value="{{ invite }}" required maxlength="20"
+               autocomplete="off" placeholder="WOC-XXXX-XXXX"
+               title="Ask an administrator for an invitation code">
+        <span class="muted small">Sign-ups are currently invite-only — ask an
+          administrator for a code.</span>
+      </label>
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </form>
+    <p class="muted">Already a member? <a href="{{ url_for('auth.login') }}">Sign in</a>.</p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Dispatch{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Route network</h1>
+  <div class="actions">
+    <form method="get" class="searchbar">
+      <input name="q" value="{{ q }}" placeholder="Search CW number, ICAO, type…">
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <a class="btn" href="{{ url_for('pilots.log_flight', mode='charter') }}">Dispatch charter</a>
+    {% if g.user['role'] == 'admin' %}
+    <a class="btn btn-primary" href="{{ url_for('dispatch.new_route') }}">+ New route</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+{% if routes %}
+<table>
+  <thead>
+    <tr>
+      <th>Flight</th><th>Callsign</th><th>Route</th><th>Type</th><th>Dep&nbsp;(UTC)</th>
+      <th>Aircraft</th><th>Distance</th><th>Block</th>
+      {% if g.user['role'] == 'admin' %}<th>Added by</th>{% endif %}<th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in routes %}
+    <tr>
+      <td class="mono strong">{{ r.flight_no }}</td>
+      <td class="mono">{{ r.callsign }}</td>
+      <td class="mono">{{ r.dep_icao }} → {{ r.arr_icao }}</td>
+      <td><span class="badge load-{{ r.route_type }}">{{ 'Cargo' if r.route_type == 'cargo' else 'PAX' }}</span></td>
+      <td class="mono">{{ r.dep_time or '—' }}</td>
+      <td>
+        {% if r.approved %}
+        <select class="aircraft-select mono" aria-label="Approved aircraft for {{ r.flight_no }}">
+          {% for a in r.approved %}
+          <option>{{ a }}</option>
+          {% endfor %}
+        </select>
+        {% else %}<span class="muted">Any aircraft</span>{% endif %}
+      </td>
+      <td class="mono">{{ r.distance_nm ~ ' nm' if r.distance_nm else '—' }}</td>
+      <td class="mono">{{ r.duration_min | hours if r.duration_min else '—' }}</td>
+      {% if g.user['role'] == 'admin' %}<td>{{ r.creator or '—' }}</td>{% endif %}
+      <td class="row-actions">
+        <a class="btn btn-sm" href="{{ url_for('pilots.log_flight', route_id=r.id) }}">Log flight</a>
+        <a class="btn btn-sm" href="{{ r.simbrief_url }}" target="_blank" rel="noopener">SimBrief</a>
+        {% if g.user['role'] == 'admin' %}
+        <a class="btn btn-sm" href="{{ url_for('dispatch.edit_route', route_id=r.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('dispatch.delete_route', route_id=r.id) }}"
+              onsubmit="return confirm('Delete {{ r.flight_no }} {{ r.dep_icao }} → {{ r.arr_icao }}?');">
+          <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">
+  {% if q %}No routes match “{{ q }}”.{% else %}No routes yet — create the
+  first one with “New route”.{% endif %}
+</p>
+{% endif %}
+</div>
+
+<p class="muted small">
+  Numbering: 1xxx Vancouver · 2xxx Calgary · 3xxx Edmonton · 4xxx Toronto (international) ·
+  5xxx Toronto (domestic) · 6xxx Montréal · 7xxx other Canadian · 8xxx US international ·
+  9xxx rest of world. The departure hub sets the digit; each leg is numbered
+  independently. Legs departing Canada carry an even number, legs departing
+  abroad an odd number.
+</p>
+{% endblock %}

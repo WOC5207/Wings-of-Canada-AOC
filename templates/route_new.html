@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit route' if edit else 'New route' }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>
+  {% if edit %}Edit route <span class="mono">{{ route.flight_no }}</span>
+    <span class="muted">· {{ route.dep_icao }} → {{ route.arr_icao }}</span>
+  {% else %}Dispatch a new route{% endif %}
+</h1></div>
+
+<div class="two-col">
+  <div class="card">
+    <form method="post" class="stack" id="route-form">
+      <div class="field-row">
+        <label>Departure (ICAO)
+          <input id="dep" name="dep" value="{{ form.dep }}" required maxlength="4"
+                 class="mono upper" placeholder="CYVR"
+                 {% if edit %}readonly{% else %}data-airport-ac{% endif %}>
+        </label>
+        <label>Arrival (ICAO)
+          <input id="arr" name="arr" value="{{ form.arr }}" required maxlength="4"
+                 class="mono upper" placeholder="CYYZ"
+                 {% if edit %}readonly{% else %}data-airport-ac{% endif %}>
+        </label>
+      </div>
+      {% if edit %}<p class="muted small">Departure, arrival and the flight
+        number are fixed for an existing route — change the aircraft, type,
+        departure time or estimates below.</p>{% endif %}
+      <div class="field-row">
+        <label>Flight type
+          <div class="segmented" role="radiogroup" aria-label="Passenger or cargo route">
+            <input type="radio" id="rt-pax" name="route_type" value="pax"
+                   {{ 'checked' if form.route_type != 'cargo' }}>
+            <label for="rt-pax">✈ Passenger</label>
+            <input type="radio" id="rt-cargo" name="route_type" value="cargo"
+                   {{ 'checked' if form.route_type == 'cargo' }}>
+            <label for="rt-cargo">📦 Cargo</label>
+          </div>
+        </label>
+        <label>Departure time (UTC){% if edit %} <span class="muted">(optional)</span>{% endif %}
+          <div class="time-select">
+            <select id="dep_time_h" name="dep_time_h" class="mono"
+                    {% if not edit %}required{% endif %} aria-label="Departure hour">
+              <option value="" disabled {{ 'selected' if not form.dep_time_h }}>HH</option>
+              {% for h in range(24) %}
+              {% set hh = '%02d' % h %}
+              <option value="{{ hh }}" {{ 'selected' if form.dep_time_h == hh }}>{{ hh }}</option>
+              {% endfor %}
+            </select>
+            <span class="time-sep mono">:</span>
+            <select id="dep_time_m" name="dep_time_m" class="mono"
+                    {% if not edit %}required{% endif %} aria-label="Departure minute">
+              <option value="" disabled {{ 'selected' if not form.dep_time_m }}>MM</option>
+              {% for m in range(0, 60, 5) %}
+              {% set mm = '%02d' % m %}
+              <option value="{{ mm }}" {{ 'selected' if form.dep_time_m == mm }}>{{ mm }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </label>
+      </div>
+      <div class="field">
+        <span class="field-label">Approved aircraft <span class="muted">(required)</span></span>
+        <div class="aircraft-readout" id="aircraft-readout">
+          {% if form.aircraft %}{{ form.aircraft | join(', ') }}{% else %}None selected{% endif %}
+        </div>
+        <span class="muted small">Tick the aircraft pilots may use on this route →
+          at least one is required.</span>
+      </div>
+      <div class="field-row">
+        <label>Distance, nm <span class="muted">(auto-estimated)</span>
+          <input id="distance_nm" name="distance_nm" value="{{ form.distance_nm }}"
+                 inputmode="numeric" placeholder="auto">
+        </label>
+        <label>Block time H:MM <span class="muted">(auto-estimated)</span>
+          <input id="duration" name="duration" value="{{ form.duration }}"
+                 placeholder="auto" pattern="\d{1,2}:[0-5]\d">
+        </label>
+      </div>
+      <p class="muted small" id="est-hint">Enter both airports and the distance
+        and block time are estimated for you — adjust them if needed.</p>
+      {% if not edit %}
+      <label class="checkbox-row">
+        <input type="checkbox" name="create_return"
+               {{ 'checked' if form.create_return }}>
+        <span>Also create the return flight (numbered on its own departure city)</span>
+      </label>
+      {% endif %}
+      <label>Notes <span class="muted">(optional)</span>
+        <input name="notes" value="{{ form.notes }}" maxlength="200">
+      </label>
+      <button class="btn btn-primary" type="submit">
+        {{ 'Save changes' if edit else 'Generate flight numbers' }}</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Approved aircraft</h2>
+    {% if fleet_options %}
+    <p class="muted small">Tick every aircraft a pilot may fly on this route
+      (at least one is required).</p>
+    <div class="fleet-picker" id="fleet-picker">
+      {% set groups = [('pax', '✈ Passenger'), ('cargo', '📦 Cargo'), ('charter', '⭐ Charter')] %}
+      {% for key, title in groups %}
+      {% set items = fleet_options | selectattr('load_type', 'equalto', key) | list %}
+      {% if items %}
+      <div class="fleet-group" data-load="{{ key }}">
+        <div class="fleet-group-head">{{ title }} <span class="muted">({{ items | length }})</span></div>
+        {% for o in items %}
+        <label class="fleet-pick {{ 'selected' if o.value in form.aircraft }}">
+          <input type="checkbox" class="fp-check" name="aircraft" value="{{ o.value }}"
+                 form="route-form" data-icao="{{ o.icao_type }}"
+                 {{ 'checked' if o.value in form.aircraft }}>
+          <span class="fp-reg mono">{{ o.value }}</span>
+          <span class="fp-detail">{{ o.detail }}{% if o.capacity %} · {{ o.capacity }}{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No active aircraft in the fleet yet — add some under Fleet
+      before creating a route (a route must approve at least one aircraft).</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+(function () {
+  var dep = document.getElementById('dep');
+  var arr = document.getElementById('arr');
+  var readout = document.getElementById('aircraft-readout');
+  var picker = document.getElementById('fleet-picker');
+  var dist = document.getElementById('distance_nm');
+  var dur = document.getElementById('duration');
+  var hint = document.getElementById('est-hint');
+  var icaoOk = /^[A-Z][A-Z0-9]{3}$/;
+
+  var rtCargo = document.getElementById('rt-cargo');
+
+  function checks() {
+    return picker ? [].slice.call(picker.querySelectorAll('.fp-check')) : [];
+  }
+  function checked() { return checks().filter(function (c) { return c.checked; }); }
+
+  // A cargo route shows only cargo aircraft; a passenger route shows passenger
+  // and charter aircraft. Hide the other groups and untick anything hidden so
+  // it can't be submitted.
+  function applyRouteType() {
+    var show = (rtCargo && rtCargo.checked) ? ['cargo'] : ['pax', 'charter'];
+    if (picker) {
+      picker.querySelectorAll('.fleet-group').forEach(function (g) {
+        var visible = show.indexOf(g.dataset.load) >= 0;
+        g.hidden = !visible;
+        if (!visible) {
+          g.querySelectorAll('.fp-check').forEach(function (c) { c.checked = false; });
+        }
+      });
+    }
+    syncSelection();
+    refresh();
+  }
+
+  // The first approved aircraft's ICAO type drives the block-time model.
+  var selectedIcao = '';
+
+  // Reflect the ticked aircraft in the tile highlight, the read-out and the
+  // ICAO type used for the estimate.
+  function syncSelection() {
+    checks().forEach(function (c) {
+      c.closest('.fleet-pick').classList.toggle('selected', c.checked);
+    });
+    var on = checked();
+    readout.textContent = on.length
+      ? on.map(function (c) { return c.value; }).join(', ')
+      : 'None selected';
+    selectedIcao = on.length ? (on[0].dataset.icao || '') : '';
+  }
+
+  // Track whether each field was typed by the pilot; only overwrite
+  // values that we filled in ourselves.
+  [dist, dur].forEach(function (el) {
+    el.addEventListener('input', function () { el.dataset.auto = ''; });
+  });
+
+  function refresh() {
+    var d = dep.value.trim().toUpperCase();
+    var a = arr.value.trim().toUpperCase();
+    if (!icaoOk.test(d) || !icaoOk.test(a) || d === a) return;
+    var url = '/dispatch/estimate?dep=' + d + '&arr=' + a +
+              '&type=' + encodeURIComponent(selectedIcao);
+    fetch(url).then(function (r) { return r.ok ? r.json() : {ok: false}; })
+      .then(function (j) {
+        if (!j.ok) {
+          hint.textContent = 'No estimate available for ' + d + ' → ' + a +
+            ' — you can enter distance and block time manually.';
+          return;
+        }
+        if (!dist.value || dist.dataset.auto === '1') {
+          dist.value = j.distance_nm;
+          dist.dataset.auto = '1';
+        }
+        if (!dur.value || dur.dataset.auto === '1') {
+          dur.value = j.duration_hmm;
+          dur.dataset.auto = '1';
+        }
+        var on = checked();
+        var forWho = on.length === 1 ? ' for ' + on[0].value
+                   : on.length > 1 ? ' for ' + on.length + ' aircraft' : '';
+        hint.textContent = 'Estimated: ' + j.distance_nm + ' nm great-circle, ' +
+          j.duration_hmm + ' block' + forWho + '. Adjust if needed.';
+      })
+      .catch(function () { /* estimates are best-effort */ });
+  }
+
+  if (picker) {
+    picker.addEventListener('change', function (e) {
+      if (!e.target.classList.contains('fp-check')) return;
+      syncSelection();
+      refresh();
+    });
+  }
+
+  [dep, arr].forEach(function (el) {
+    el.addEventListener('change', refresh);
+    el.addEventListener('blur', refresh);
+    el.addEventListener('input', function () {
+      if (icaoOk.test(dep.value.trim().toUpperCase()) &&
+          icaoOk.test(arr.value.trim().toUpperCase())) refresh();
+    });
+  });
+
+  document.querySelectorAll('input[name=route_type]').forEach(function (el) {
+    el.addEventListener('change', applyRouteType);
+  });
+  applyRouteType();  // also runs the initial syncSelection + refresh
+})();
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='airport-ac.js') }}"></script>
+{% endblock %}

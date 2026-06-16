@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block main %}
+<section class="landing-hero">
+  <div class="hero-bg"
+       {% if cover and cover.type == 'image' %}style="background-image: url('{{ url_for('main.cover', v=cover.version) }}')"{% endif %}></div>
+  {% if cover and cover.type == 'video' %}
+  <video class="hero-video" autoplay muted loop playsinline
+         src="{{ url_for('main.cover', v=cover.version) }}"></video>
+  {% endif %}
+  <div class="hero-overlay"></div>
+
+  <div class="hero-content">
+    <span class="hero-accent"></span>
+    <h1 class="hero-title">{{ hero.title1 }}{% if hero.title2 %} {{ hero.title2 }}{% endif %}</h1>
+    {% if hero.subtitle %}<p class="hero-sub">{{ hero.subtitle }}</p>{% endif %}
+    <div class="hero-actions">
+      {% if g.user %}
+      <a class="btn btn-primary btn-lg" href="{{ url_for('main.dashboard') }}">Open dashboard →</a>
+      <a class="btn btn-hero-ghost btn-lg" href="{{ url_for('admin.site') }}">Change cover</a>
+      {% else %}
+      <a class="btn btn-primary btn-lg" href="{{ url_for('auth.register') }}">Join the crew →</a>
+      <a class="btn btn-hero-ghost btn-lg" href="{{ url_for('auth.login') }}">Member sign in</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <a class="hero-scroll" href="#ops-status">Operations status ↓</a>
+</section>
+
+<main class="page" id="ops-status">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="page-head"><h1>Operations status</h1></div>
+
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-value">{{ stats.pilots }}</div><div class="stat-label">Members</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.fleet }}</div><div class="stat-label">Active aircraft</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.routes }}</div><div class="stat-label">Routes</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.hours | hoursdec }}</div><div class="stat-label">Fleet-wide hours</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h2>Latest flights <span class="muted">across the network</span></h2>
+      {% if recent_pireps %}
+      <div class="flights-scroll">
+      <table>
+        <thead><tr><th>Pilot</th><th>Flight</th><th>Route</th><th>Time</th></tr></thead>
+        <tbody>
+        {% for p in recent_pireps %}
+          <tr>
+            <td>{{ p['pilot'] }}</td>
+            <td class="mono">{{ p['flight_no'] }}</td>
+            <td class="mono">{{ p['dep_icao'] }} → {{ p['arr_icao'] }}</td>
+            <td class="mono">{{ p['flight_time_min'] | hours }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}<p class="muted">No flights logged yet.</p>{% endif %}
+    </div>
+
+    <div class="col-stack">
+      <div class="card">
+        <h2>Top pilots <span class="muted">by flight hours</span></h2>
+        {% if top_pilots %}
+        <ol class="leaderboard">
+          {% for p in top_pilots %}
+          <li>
+            <span class="lb-pos mono">{{ loop.index }}</span>
+            <div class="lb-main">
+              <span class="mono strong">{{ p['callsign'] }}</span>
+              <span class="badge {{ pilot_rank_class(p['flights'], p['minutes']) }}">{{ pilot_rank(p['flights'], p['minutes']) }}</span>
+            </div>
+            <span class="lb-hours mono">{{ p['minutes'] | hoursdec }}h</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}<p class="muted">No flight hours logged yet.</p>{% endif %}
+      </div>
+
+      <div class="card">
+        <h2>Fleet status</h2>
+        <div class="fleet-status-list">
+          <div class="fsl-row"><span class="badge status-active">Active</span><span class="mono">{{ fleet_status.active }}</span></div>
+          <div class="fsl-row"><span class="badge status-maintenance">Maintenance</span><span class="mono">{{ fleet_status.maintenance }}</span></div>
+          <div class="fsl-row"><span class="badge status-retired">Retired</span><span class="mono">{{ fleet_status.retired }}</span></div>
+          <div class="fsl-total"><span class="strong">Total fleet</span><span class="mono strong">{{ fleet_status.active + fleet_status.maintenance + fleet_status.retired }}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if showcase %}
+  <h2 class="showcase-title">Our fleet</h2>
+  <div class="fleet-showcase">
+    {% for a in showcase %}
+    <a class="fleet-card" href="{{ url_for('fleet.detail', aircraft_id=a['id']) }}"
+       title="View {{ a['registration'] }}">
+      <div class="fleet-card-img">
+        {% if a['image_id'] %}
+        <img src="{{ url_for('fleet.image', image_id=a['image_id']) }}" alt="{{ a['registration'] }}" loading="lazy">
+        {% else %}
+        <div class="fleet-card-ph"><span class="mono">{{ a['icao_type'] }}</span></div>
+        {% endif %}
+      </div>
+      <div class="fleet-card-body">
+        <div class="fleet-card-reg mono strong">{{ a['registration'] }}</div>
+        <div class="fleet-card-variant muted">{{ a['variant'] or a['icao_type'] }}</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // The cover sits in a fixed layer behind the page; as the visitor scrolls the
+  // first screen, blur it gradually so the content below reads cleanly.
+  var root = document.documentElement;
+  var hero = document.querySelector('.landing-hero');
+  if (!hero) return;
+  var MAX_BLUR = 16;            // px at full scroll-through
+  var ticking = false;
+
+  function update() {
+    ticking = false;
+    var span = Math.max(1, window.innerHeight * 0.9);
+    var t = Math.min(1, (window.scrollY || window.pageYOffset) / span);
+    root.style.setProperty('--hero-blur', (t * MAX_BLUR).toFixed(1) + 'px');
+  }
+  function onScroll() {
+    if (!ticking) { ticking = true; requestAnimationFrame(update); }
+  }
+
+  update();
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', update);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ pilot['callsign'] }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1><span class="mono">{{ pilot['callsign'] }}</span>
+    <span class="badge {{ pilot_rank_class(stats['flights'], stats['minutes']) }}">{{ pilot_rank(stats['flights'], stats['minutes']) }}</span>
+    <span class="badge role-{{ pilot['role'] }}">{{ pilot['role'] | rolelabel }}</span>
+  </h1>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="stat-value">{{ stats['flights'] }}</div><div class="stat-label">Completed flights</div></div>
+  <div class="stat"><div class="stat-value">{{ stats['minutes'] | hours }}</div><div class="stat-label">Total hours</div></div>
+  <div class="stat"><div class="stat-value">{{ history | length }}</div><div class="stat-label">Unique routes flown</div></div>
+  <div class="stat"><div class="stat-value">{{ pilot['created_at'][:10] }}</div><div class="stat-label">Member since</div></div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>Logbook</h2>
+    {% if logbook %}
+    <table>
+      <thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Aircraft</th><th>Time</th><th></th></tr></thead>
+      <tbody>
+      {% for e in logbook %}
+        <tr>
+          <td class="mono">{{ e['flight_date'] }}</td>
+          <td class="mono">{{ e['flight_no'] }}{% if e['flight_type'] == 'charter' %}
+            <span class="badge load-charter">Charter</span>{% endif %}</td>
+          <td class="mono">{{ e['dep_icao'] }} → {{ e['arr_icao'] }}</td>
+          <td class="mono">{{ e['aircraft_label'] or '—' }}</td>
+          <td class="mono">{{ e['flight_time_min'] | hours }}</td>
+          <td>
+            {% if g.user['id'] == pilot['id'] or g.user['role'] == 'admin' %}
+            <form method="post" action="{{ url_for('pilots.delete_pirep', pirep_id=e['id']) }}"
+                  onsubmit="return confirm('Delete this logbook entry?');">
+              <button class="btn btn-sm btn-danger" type="submit">×</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No flights logged yet.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Route history</h2>
+    {% if history %}
+    <table>
+      <thead><tr><th>Route</th><th>Last flown</th><th>Flight</th></tr></thead>
+      <tbody>
+      {% for e in history %}
+        <tr>
+          <td class="mono">{{ e['dep_icao'] }} → {{ e['arr_icao'] }}</td>
+          <td class="mono">{{ e['flight_date'] }}</td>
+          <td class="mono">{{ e['flight_no'] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No routes flown yet.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}
