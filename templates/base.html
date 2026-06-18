@@ -43,16 +43,21 @@
     {% set member_eps = ['admin.users', 'admin.new_user', 'admin.create_user',
                          'admin.edit_user', 'admin.reset_password', 'admin.delete_user'] %}
     {% set invite_eps = ['admin.invites', 'admin.create_invite', 'admin.delete_invite'] %}
+    {% set pirep_eps = ['admin.pireps', 'admin.accept_pirep', 'admin.reject_pirep'] %}
     <div class="nav-dropdown" data-dropdown>
       <button type="button" class="nav-trigger {{ 'active' if request.blueprint == 'admin' }}"
-              aria-haspopup="true" aria-expanded="false">Admin ▾</button>
+              aria-haspopup="true" aria-expanded="false">Admin{% if sc_pending_pireps %}
+        <span class="nav-badge">{{ sc_pending_pireps }}</span>{% endif %} ▾</button>
       <div class="nav-menu" role="menu">
         <a href="{{ url_for('admin.users') }}"
            class="{{ 'active' if request.endpoint in member_eps }}">Member management</a>
+        <a href="{{ url_for('admin.pireps') }}"
+           class="{{ 'active' if request.endpoint in pirep_eps }}">Flight reports{% if sc_pending_pireps %}
+          <span class="nav-badge">{{ sc_pending_pireps }}</span>{% endif %}</a>
         <a href="{{ url_for('admin.invites') }}"
            class="{{ 'active' if request.endpoint in invite_eps }}">Invitation codes</a>
         <a href="{{ url_for('admin.site') }}"
-           class="{{ 'active' if request.endpoint not in member_eps and request.endpoint not in invite_eps and request.blueprint == 'admin' }}">Site admin</a>
+           class="{{ 'active' if request.endpoint not in member_eps and request.endpoint not in invite_eps and request.endpoint not in pirep_eps and request.blueprint == 'admin' }}">Site admin</a>
       </div>
     </div>
     {% endif %}

@@ -6,6 +6,9 @@
     <span class="badge {{ pilot_rank_class(stats['flights'], stats['minutes']) }}">{{ pilot_rank(stats['flights'], stats['minutes']) }}</span>
     <span class="badge role-{{ pilot['role'] }}">{{ pilot['role'] | rolelabel }}</span>
   </h1>
+  {% if g.user['id'] == pilot['id'] %}
+  <a class="btn btn-ghost" href="{{ url_for('pilots.smartcars') }}">Connect smartCARS</a>
+  {% endif %}
 </div>
 
 <div class="stat-grid">

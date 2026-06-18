@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Connect smartCARS{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Connect smartCARS</h1>
+  <a class="btn btn-ghost" href="{{ url_for('pilots.me') }}">Back to profile</a>
+</div>
+
+<div class="card narrow-form">
+  <p class="muted">smartCARS 3 is TFDi Design's flight tracker. Once Wings of
+    Canada is listed in smartCARS Central you can track your flights straight into
+    your AOC logbook. Use the details below to connect.</p>
+
+  <div class="field">
+    <span class="field-label">Script URL</span>
+    <div class="copy-row">
+      <input class="mono" id="sc-url" readonly value="{{ script_url }}">
+      <button type="button" class="btn btn-ghost btn-sm" data-copy="sc-url">Copy</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Username</span>
+    <div class="copy-row">
+      <input class="mono" id="sc-user" readonly value="{{ user['callsign'] }}">
+      <button type="button" class="btn btn-ghost btn-sm" data-copy="sc-user">Copy</button>
+    </div>
+    <span class="muted small">Your callsign{% if user['email'] %} or email{% endif %}.</span>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Connection token</span>
+    <div class="copy-row">
+      <input class="mono" id="sc-token" readonly value="{{ user['api_key'] }}">
+      <button type="button" class="btn btn-ghost btn-sm" data-copy="sc-token">Copy</button>
+    </div>
+    <span class="muted small">Paste this in the password field when signing in to
+      smartCARS. Your normal AOC password works too — use whichever you prefer.</span>
+  </div>
+
+  <form method="post" class="stack"
+        onsubmit="return confirm('Regenerate your token? Any smartCARS session using the old one will be signed out.');">
+    <button class="btn btn-danger btn-sm" type="submit">Regenerate token</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
+  <h2>How to connect</h2>
+  <ol class="muted">
+    <li>Download and install <strong>smartCARS Central</strong> from TFDi Design.</li>
+    <li>Add <strong>Wings of Canada</strong> from the community list.</li>
+    <li>Sign in with the <strong>username</strong> and <strong>connection token</strong>
+      (or your AOC password) shown above.</li>
+    <li>Pick a flight from the schedule, fly it, and your PIREP is filed here for
+      review automatically.</li>
+  </ol>
+  <p class="muted small">smartCARS-filed flights arrive as <em>pending</em> and count
+    toward your totals once an administrator accepts them.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var el = document.getElementById(btn.getAttribute('data-copy'));
+    if (!el) return;
+    el.select();
+    navigator.clipboard.writeText(el.value).then(function () {
+      var t = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = t; }, 1200);
+    }).catch(function () {});
+  });
+});
+</script>
+{% endblock %}

@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS users (
     -- stays the source of truth; these are simply added to the displayed totals.
     adj_flights   INTEGER NOT NULL DEFAULT 0,
     adj_minutes   INTEGER NOT NULL DEFAULT 0,
+    -- Per-pilot bearer token used as the smartCARS 3 credential/session. Stays
+    -- NULL until a pilot connects smartCARS; SQLite treats multiple NULLs as
+    -- distinct so unconnected pilots don't clash on UNIQUE.
+    api_key       TEXT UNIQUE,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -90,6 +94,22 @@ CREATE TABLE IF NOT EXISTS pireps (
     flight_date     TEXT NOT NULL,
     flight_time_min INTEGER NOT NULL,
     remarks         TEXT NOT NULL DEFAULT '',
+    -- Acceptance lifecycle. Manually logged flights are born 'accepted' and count
+    -- immediately; smartCARS files them 'prefiled' on start, 'pending' on
+    -- completion, and an admin moves them to 'accepted'/'rejected'. Stats count
+    -- 'accepted' only.
+    status          TEXT NOT NULL DEFAULT 'accepted'
+                    CHECK (status IN ('prefiled', 'pending', 'accepted', 'rejected')),
+    source          TEXT NOT NULL DEFAULT 'manual'
+                    CHECK (source IN ('manual', 'smartcars')),
+    -- The smartCARS bid this PIREP was flown from (informational; bids are
+    -- cleared once the PIREP is filed).
+    bid_id          INTEGER,
+    -- ACARS-reported figures, NULL for manual logs.
+    landing_rate    INTEGER,
+    fuel_used       INTEGER,
+    -- Gzipped raw flight-data blob smartCARS submits on completion, kept for audit.
+    acars_raw       BLOB,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -140,8 +160,41 @@ CREATE TABLE IF NOT EXISTS invite_codes (
     used_at    TEXT
 );
 
+-- A pilot's smartCARS flight bid (book -> start -> complete). The AOC schedule
+-- (routes) carries no booking state, so smartCARS bookings live here. Route and
+-- aircraft are snapshotted (like pireps) so a bid survives later edits; a charter
+-- bid has no route_id and carries a pilot-supplied flight number.
+CREATE TABLE IF NOT EXISTS bids (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    route_id    INTEGER REFERENCES routes(id) ON DELETE SET NULL,
+    aircraft_id INTEGER REFERENCES aircraft(id) ON DELETE SET NULL,
+    flight_no   TEXT NOT NULL,
+    dep_icao    TEXT NOT NULL,
+    arr_icao    TEXT NOT NULL,
+    flight_type TEXT NOT NULL DEFAULT 'scheduled'
+                CHECK (flight_type IN ('scheduled', 'charter')),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- In-flight position trail smartCARS pushes during a tracked flight, one row per
+-- telemetry tick, tied to the prefiled PIREP. Powers a future live/replay map.
+CREATE TABLE IF NOT EXISTS acars_positions (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    pirep_id  INTEGER NOT NULL REFERENCES pireps(id) ON DELETE CASCADE,
+    lat       REAL NOT NULL,
+    lon       REAL NOT NULL,
+    altitude  INTEGER,
+    heading   INTEGER,
+    gs        INTEGER,
+    phase     TEXT,
+    logged_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_pireps_user ON pireps(user_id);
 CREATE INDEX IF NOT EXISTS idx_routes_pair ON routes(pair_id);
+CREATE INDEX IF NOT EXISTS idx_bids_user ON bids(user_id);
+CREATE INDEX IF NOT EXISTS idx_acars_pirep ON acars_positions(pirep_id);
 """
 
 
@@ -488,6 +541,45 @@ def _migrate(conn):
                 "INSERT INTO notams (text, level) VALUES (?, ?)", (text, level)
             )
         conn.execute("DELETE FROM settings WHERE key IN ('notam_text', 'notam_level')")
+
+    # smartCARS 3 integration (see SMARTCARS-INTEGRATION.md). All additive, so
+    # existing logbooks and stats are unchanged. The bids / acars_positions tables
+    # are created by the schema above; these blocks patch the older users / pireps
+    # tables in place. Re-query table_info here (rather than reuse the snapshot
+    # near the top) so it reflects any rebuild done above.
+    user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "api_key" not in user_cols:
+        # SQLite can't add a UNIQUE column via ALTER, so add it plain and enforce
+        # uniqueness with an index (multiple NULLs stay distinct, so pilots who
+        # haven't connected smartCARS don't collide). Fresh DBs already carry the
+        # column-level UNIQUE from the schema, so this only runs when upgrading.
+        conn.execute("ALTER TABLE users ADD COLUMN api_key TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key)"
+        )
+
+    # PIREPs gained an acceptance lifecycle and ACARS fields. Existing rows
+    # default to accepted/manual, so nothing about the current logbook changes;
+    # only smartCARS-filed PIREPs land pending and await admin acceptance.
+    pirep_cols2 = [r["name"] for r in conn.execute("PRAGMA table_info(pireps)").fetchall()]
+    if "status" not in pirep_cols2:
+        conn.execute(
+            "ALTER TABLE pireps ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted' "
+            "CHECK (status IN ('prefiled', 'pending', 'accepted', 'rejected'))"
+        )
+    if "source" not in pirep_cols2:
+        conn.execute(
+            "ALTER TABLE pireps ADD COLUMN source TEXT NOT NULL DEFAULT 'manual' "
+            "CHECK (source IN ('manual', 'smartcars'))"
+        )
+    if "bid_id" not in pirep_cols2:
+        conn.execute("ALTER TABLE pireps ADD COLUMN bid_id INTEGER")
+    if "landing_rate" not in pirep_cols2:
+        conn.execute("ALTER TABLE pireps ADD COLUMN landing_rate INTEGER")
+    if "fuel_used" not in pirep_cols2:
+        conn.execute("ALTER TABLE pireps ADD COLUMN fuel_used INTEGER")
+    if "acars_raw" not in pirep_cols2:
+        conn.execute("ALTER TABLE pireps ADD COLUMN acars_raw BLOB")
 
 
 def init_db():
