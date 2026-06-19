@@ -5,3 +5,6 @@ data/
 
 # Machine-specific Claude Code permissions (keep launch.json shared)
 .claude/settings.local.json
+
+# Deployment bundle — contains the live DB + session key, never commit
+deploy/
