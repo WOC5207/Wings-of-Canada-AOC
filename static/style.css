@@ -264,6 +264,25 @@ tr:hover td { background: var(--row-hover); }
 .load-pax { background: rgba(77, 171, 247, .15); color: #74c0fc; }
 .load-cargo { background: rgba(232, 153, 12, .16); color: #ffc94d; }
 .load-charter { background: rgba(47, 158, 68, .16); color: #69db7c; }
+
+/* Small count pill on the Admin nav / menu entries (pending flight reports). */
+.nav-badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 16px;
+}
+
+/* Read-only value + Copy button rows on the Connect smartCARS page. */
+.copy-row { display: flex; gap: 8px; align-items: center; }
+.copy-row input { flex: 1; min-width: 0; }
+.copy-row .btn { flex: none; }
 /* pilot ranks: junior (neutral) warming to brand red at the top */
 .rank-student        { background: rgba(139, 149, 165, .16); color: #aeb6c2; }
 .rank-private        { background: rgba(77, 171, 247, .15);  color: #74c0fc; }

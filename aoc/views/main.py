@@ -20,7 +20,8 @@ def _dashboard_data(db):
         "routes": db.execute("SELECT COUNT(*) AS n FROM routes").fetchone()["n"],
         "hours": (
             db.execute(
-                "SELECT COALESCE(SUM(flight_time_min), 0) AS n FROM pireps"
+                "SELECT COALESCE(SUM(flight_time_min), 0) AS n FROM pireps "
+                "WHERE status = 'accepted'"
             ).fetchone()["n"]
             + db.execute(
                 "SELECT COALESCE(SUM(adj_minutes), 0) AS n FROM users"
@@ -42,7 +43,8 @@ def _dashboard_data(db):
         """SELECT u.id, u.callsign,
                   COUNT(p.id) + u.adj_flights AS flights,
                   COALESCE(SUM(p.flight_time_min), 0) + u.adj_minutes AS minutes
-           FROM users u LEFT JOIN pireps p ON p.user_id = u.id
+           FROM users u
+           LEFT JOIN pireps p ON p.user_id = u.id AND p.status = 'accepted'
            GROUP BY u.id
            HAVING minutes > 0
            ORDER BY minutes DESC, u.callsign

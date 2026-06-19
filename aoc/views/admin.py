@@ -40,7 +40,8 @@ def users():
                     COALESCE(SUM(p.flight_time_min), 0) AS logged_minutes,
                     COUNT(p.id) + u.adj_flights AS total_flights,
                     COALESCE(SUM(p.flight_time_min), 0) + u.adj_minutes AS total_minutes
-             FROM users u LEFT JOIN pireps p ON p.user_id = u.id"""
+             FROM users u
+             LEFT JOIN pireps p ON p.user_id = u.id AND p.status = 'accepted'"""
     params = []
     if query:
         sql += """ WHERE u.callsign LIKE ? OR COALESCE(u.name, '') LIKE ?
@@ -76,7 +77,7 @@ def edit_user(user_id):
         logged = db.execute(
             """SELECT COUNT(*) AS flights,
                       COALESCE(SUM(flight_time_min), 0) AS minutes
-               FROM pireps WHERE user_id = ?""",
+               FROM pireps WHERE user_id = ? AND status = 'accepted'""",
             (user_id,),
         ).fetchone()
         return render_template(
@@ -276,6 +277,49 @@ def delete_invite(code_id):
     db.commit()
     flash("Invitation code revoked.", "success")
     return redirect(url_for("admin.invites"))
+
+
+@bp.route("/pireps")
+@role_required("admin")
+def pireps():
+    """The acceptance queue: PIREPs filed by smartCARS (or any source) that are
+    pending review. Accepting one makes it count toward the pilot's totals."""
+    rows = get_db().execute(
+        """SELECT p.*, u.callsign AS pilot FROM pireps p
+           JOIN users u ON u.id = p.user_id
+           WHERE p.status = 'pending'
+           ORDER BY p.created_at"""
+    ).fetchall()
+    return render_template("admin_pireps.html", pireps=rows)
+
+
+def _review_pirep(pirep_id, status, verb):
+    db = get_db()
+    p = db.execute(
+        """SELECT p.*, u.callsign AS pilot FROM pireps p
+           JOIN users u ON u.id = p.user_id WHERE p.id = ?""",
+        (pirep_id,),
+    ).fetchone()
+    if p is None or p["status"] != "pending":
+        flash("That flight report is no longer pending review.", "error")
+        return redirect(url_for("admin.pireps"))
+    db.execute("UPDATE pireps SET status = ? WHERE id = ?", (status, pirep_id))
+    db.commit()
+    flash(f"Flight {p['flight_no']} {p['dep_icao']} → {p['arr_icao']} "
+          f"by {p['pilot']} {verb}.", "success")
+    return redirect(url_for("admin.pireps"))
+
+
+@bp.route("/pireps/<int:pirep_id>/accept", methods=("POST",))
+@role_required("admin")
+def accept_pirep(pirep_id):
+    return _review_pirep(pirep_id, "accepted", "accepted")
+
+
+@bp.route("/pireps/<int:pirep_id>/reject", methods=("POST",))
+@role_required("admin")
+def reject_pirep(pirep_id):
+    return _review_pirep(pirep_id, "rejected", "rejected")
 
 
 @bp.route("/site")

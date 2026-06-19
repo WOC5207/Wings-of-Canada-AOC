@@ -3,7 +3,7 @@ import os
 import secrets
 from pathlib import Path
 
-from flask import Flask, render_template
+from flask import Flask, g, render_template
 
 from . import db
 from .db import DATA_DIR
@@ -48,15 +48,21 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_site_chrome():
-        """Make the site-wide NOTAM banner and footer text available to every
-        template."""
+        """Make the site-wide NOTAM banner, footer text and (for admins) the
+        pending flight-report count available to every template."""
         conn = db.get_db()
+        pending = 0
+        if g.get("user") and g.user["role"] == "admin":
+            pending = conn.execute(
+                "SELECT COUNT(*) AS n FROM pireps WHERE status = 'pending'"
+            ).fetchone()["n"]
         return {
             "notams": db.notams(conn),
             "footer_text": db.footer_text(conn),
+            "sc_pending_pireps": pending,
         }
 
-    from .views import admin, auth, dispatch, fleet, main, pilots
+    from .views import admin, auth, dispatch, fleet, main, pilots, smartcars
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(main.bp)
@@ -64,6 +70,7 @@ def create_app() -> Flask:
     app.register_blueprint(fleet.bp)
     app.register_blueprint(pilots.bp)
     app.register_blueprint(admin.bp)
+    app.register_blueprint(smartcars.bp)
 
     @app.template_filter("hours")
     def fmt_hours(minutes):
