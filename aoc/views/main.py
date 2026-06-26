@@ -3,7 +3,8 @@ operations overview (network stats, recent flights, leaderboard, fleet state).""
 from flask import (Blueprint, abort, g, redirect, render_template,
                    send_from_directory, url_for)
 
-from ..db import UPLOAD_DIR, cover_media, fleet_showcase, get_db, hero_text
+from ..db import (UPLOAD_DIR, LOGO_VARIANTS, cover_media, fleet_showcase, get_db,
+                  get_setting, hero_text)
 from ..security import login_required
 
 bp = Blueprint("main", __name__)
@@ -76,6 +77,17 @@ def cover():
     if media is None:
         abort(404)
     return send_from_directory(UPLOAD_DIR, media["file"])
+
+
+@bp.route("/logo/<which>")
+def logo(which):
+    """Serve an admin-uploaded topbar logo (dark or light variant)."""
+    if which not in LOGO_VARIANTS:
+        abort(404)
+    filename = get_setting(get_db(), f"logo_{which}_file")
+    if not filename:
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, filename)
 
 
 @bp.route("/dashboard")

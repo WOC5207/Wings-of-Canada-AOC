@@ -251,6 +251,29 @@ def cover_media(db):
     }
 
 
+# The admin can set a separate topbar logo for each theme. A missing variant
+# falls back to the bundled default mark (static/logo.svg).
+LOGO_VARIANTS = ("dark", "light")
+
+
+def logo_media(db):
+    """The admin-uploaded topbar logos as {'dark': {...} | None, 'light': ...}.
+    Each present variant carries its filename and mtime version for cache-busting,
+    mirroring cover_media."""
+    out = {}
+    for which in LOGO_VARIANTS:
+        filename = get_setting(db, f"logo_{which}_file")
+        if not filename:
+            out[which] = None
+            continue
+        path = UPLOAD_DIR / filename
+        out[which] = {
+            "file": filename,
+            "version": int(path.stat().st_mtime) if path.exists() else 0,
+        }
+    return out
+
+
 # Default landing-hero copy, used until an admin overrides it on the Site admin
 # page. title2 is the optional second heading line.
 HERO_DEFAULTS = {
