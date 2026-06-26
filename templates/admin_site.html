@@ -77,6 +77,54 @@
 </div>
 
 <div class="card narrow-form">
+  <h2>Site logo</h2>
+  <p class="muted small">The mark shown top-left on every page. Upload a separate
+    version for dark and light mode — each is automatically resized to fit. A PNG
+    with a transparent background works best. A variant left unset uses the default
+    maple-leaf mark.</p>
+
+  <div class="logo-admin-grid">
+    {% for which in ['dark', 'light'] %}
+    <div class="logo-admin-col">
+      <span class="lbl">{{ which|capitalize }} mode</span>
+      <div class="logo-preview logo-preview-{{ which }}">
+        {% if logos[which] %}
+          <img src="{{ url_for('main.logo', which=which, v=logos[which].version) }}"
+               alt="{{ which }}-mode logo">
+        {% else %}
+          <img src="{{ url_for('static', filename='logo.svg') }}" alt="default logo">
+        {% endif %}
+      </div>
+      {% if logos[which] %}
+      <form method="post" action="{{ url_for('admin.remove_logo') }}"
+            onsubmit="return confirm('Remove the {{ which }}-mode logo?');">
+        <input type="hidden" name="which" value="{{ which }}">
+        <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+      </form>
+      {% else %}
+      <span class="muted small">Using default</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="{{ url_for('admin.upload_logo') }}"
+        enctype="multipart/form-data" class="stack" style="margin-top:14px;">
+    <label>
+      <span class="lbl">Dark-mode logo</span>
+      <input type="file" name="logo_dark"
+             accept="image/png,image/jpeg,image/webp,image/gif">
+    </label>
+    <label>
+      <span class="lbl">Light-mode logo</span>
+      <input type="file" name="logo_light"
+             accept="image/png,image/jpeg,image/webp,image/gif">
+    </label>
+    <button class="btn btn-primary" type="submit">Upload logo</button>
+  </form>
+</div>
+
+<div class="card narrow-form">
   <h2>Cover headings</h2>
   <p class="muted small">The text shown over the cover on the landing page.</p>
   <form method="post" action="{{ url_for('admin.update_hero') }}" class="stack">

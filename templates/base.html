@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AOC{% endblock %} · Wings of Canada</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='80' font-size='80'&gt;🍁&lt;/text&gt;&lt;/svg&gt;">
+  <link rel="icon" href="{{ url_for('static', filename='logo.svg') }}">
   <script>
     /* Apply the saved theme before first paint to avoid a flash. */
     (function () {
@@ -20,7 +20,10 @@
 <div class="site-top">
 <header class="topbar">
   <a class="brand" href="{{ url_for('main.home') }}" title="Wings of Canada — home">
-    <span class="leaf">🍁</span>
+    <img class="brand-logo brand-logo-dark" src="{{ site_logo_dark }}"
+         alt="Wings of Canada" height="34">
+    <img class="brand-logo brand-logo-light" src="{{ site_logo_light }}"
+         alt="Wings of Canada" height="34">
     <div>
       <div class="brand-name">Wings of Canada</div>
       <div class="brand-sub">Airline Operations Centre ·

@@ -145,10 +145,14 @@ def _profile(db, user):
     }
 
 
-@bp.route("/", methods=("GET", "OPTIONS"))
+@bp.route("/", methods=("GET", "OPTIONS"), strict_slashes=False)
 def handshake():
     """Root of the Script URL. smartCARS hits this to confirm the backend is
-    reachable and learn which response shape (handler) to use."""
+    reachable and learn which response shape (handler) to use.
+
+    strict_slashes=False so BOTH /smartcars/api and /smartcars/api/ return 200.
+    smartCARS validates the Script URL without its trailing slash and refuses to
+    follow the 308 that Werkzeug would otherwise issue to add it."""
     return jsonify({"apiVersion": API_VERSION, "handler": HANDLER})
 
 

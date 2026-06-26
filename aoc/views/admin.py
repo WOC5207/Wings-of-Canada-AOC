@@ -6,19 +6,42 @@ from flask import (Blueprint, flash, g, redirect, render_template, request,
                    url_for)
 from werkzeug.security import generate_password_hash
 
-from ..db import (FOOTER_DEFAULT, NOTAM_LEVELS, UPLOAD_DIR,
+from ..db import (FOOTER_DEFAULT, LOGO_VARIANTS, NOTAM_LEVELS, UPLOAD_DIR,
                   add_notam as db_add_notam, cover_media,
                   create_invite_code as db_create_invite_code,
                   delete_invite_code as db_delete_invite_code,
                   delete_notam as db_delete_notam, delete_setting, footer_text,
-                  get_db, hero_text, list_invite_codes, set_setting)
+                  get_db, get_setting, hero_text, list_invite_codes, logo_media,
+                  set_setting)
 from ..security import ROLE_LABELS, ROLE_RANK, role_required
 from .auth import CALLSIGN_DIGITS_RE, EMAIL_RE
+
+try:
+    from PIL import Image
+except ImportError:  # Pillow is a runtime dependency (see requirements.txt).
+    Image = None
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 COVER_IMAGE_EXT = {"jpg", "jpeg", "png", "webp", "gif"}
 COVER_VIDEO_EXT = {"mp4", "webm"}
+
+# Admin logo uploads: accepted raster formats, and the height every logo is
+# downscaled to (about 3x the 34px topbar display size for crisp retina output).
+LOGO_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
+LOGO_MAX_HEIGHT = 120
+
+
+def _save_resized_logo(file, dest):
+    """Open an uploaded raster image, downscale it to LOGO_MAX_HEIGHT preserving
+    aspect ratio (never upscaling), and write it out as a transparent PNG."""
+    img = Image.open(file.stream).convert("RGBA")
+    if img.height > LOGO_MAX_HEIGHT:
+        ratio = LOGO_MAX_HEIGHT / img.height
+        img = img.resize(
+            (max(1, round(img.width * ratio)), LOGO_MAX_HEIGHT), Image.LANCZOS
+        )
+    img.save(dest, format="PNG", optimize=True)
 
 
 _SORTS = {
@@ -328,8 +351,70 @@ def site():
     """Site administration: the landing-page cover and its heading text."""
     db = get_db()
     return render_template(
-        "admin_site.html", cover=cover_media(db), hero=hero_text(db)
+        "admin_site.html", cover=cover_media(db), hero=hero_text(db),
+        logos=logo_media(db),
     )
+
+
+@bp.route("/site/logo", methods=("POST",))
+@role_required("admin")
+def upload_logo():
+    """Upload the topbar logo for dark and/or light mode. Each provided image is
+    resized to fit the topbar and stored as a transparent PNG."""
+    db = get_db()
+    saved, errors = [], []
+    for which in LOGO_VARIANTS:
+        file = request.files.get(f"logo_{which}")
+        if not file or not file.filename:
+            continue
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ext not in LOGO_IMAGE_EXT:
+            errors.append(f"{which.capitalize()}-mode logo must be a PNG, JPG, "
+                          "WEBP or GIF image.")
+            continue
+        if Image is None:
+            errors.append("Image processing is unavailable on the server "
+                          "(Pillow is not installed).")
+            break
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"logo-{which}.png"
+        try:
+            _save_resized_logo(file, UPLOAD_DIR / filename)
+        except Exception:
+            errors.append(f"Could not read the {which}-mode image — please try a "
+                          "different file.")
+            continue
+        set_setting(db, f"logo_{which}_file", filename)
+        saved.append(which)
+    db.commit()
+
+    if saved:
+        flash("Logo updated for " + " and ".join(saved) + " mode.", "success")
+    elif not errors:
+        errors.append("Choose a dark- or light-mode logo file to upload.")
+    for e in errors:
+        flash(e, "error")
+    return redirect(url_for("admin.site"))
+
+
+@bp.route("/site/logo/remove", methods=("POST",))
+@role_required("admin")
+def remove_logo():
+    """Remove one logo variant, reverting that mode to the default mark."""
+    which = request.form.get("which")
+    if which not in LOGO_VARIANTS:
+        flash("Unknown logo.", "error")
+        return redirect(url_for("admin.site"))
+    db = get_db()
+    filename = get_setting(db, f"logo_{which}_file")
+    if filename:
+        path = UPLOAD_DIR / filename
+        if path.exists():
+            path.unlink()
+        delete_setting(db, f"logo_{which}_file")
+        db.commit()
+    flash(f"{which.capitalize()}-mode logo removed.", "success")
+    return redirect(url_for("admin.site"))
 
 
 @bp.route("/site/cover", methods=("POST",))

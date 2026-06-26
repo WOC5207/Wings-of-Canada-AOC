@@ -1,2 +1,5 @@
 flask>=3.0
 waitress>=3.0
+# Server-side resizing of admin-uploaded logos (manylinux/Windows wheels, no
+# build tools needed).
+pillow>=10.0

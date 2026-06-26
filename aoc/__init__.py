@@ -3,7 +3,7 @@ import os
 import secrets
 from pathlib import Path
 
-from flask import Flask, g, render_template
+from flask import Flask, g, render_template, url_for
 
 from . import db
 from .db import DATA_DIR
@@ -56,10 +56,23 @@ def create_app() -> Flask:
             pending = conn.execute(
                 "SELECT COUNT(*) AS n FROM pireps WHERE status = 'pending'"
             ).fetchone()["n"]
+        # Per-theme topbar logo URLs: the admin-uploaded variant if set, else the
+        # bundled default mark.
+        logos = db.logo_media(conn)
+        default_logo = url_for("static", filename="logo.svg")
+
+        def _logo_url(which):
+            media = logos[which]
+            if media is None:
+                return default_logo
+            return url_for("main.logo", which=which, v=media["version"])
+
         return {
             "notams": db.notams(conn),
             "footer_text": db.footer_text(conn),
             "sc_pending_pireps": pending,
+            "site_logo_dark": _logo_url("dark"),
+            "site_logo_light": _logo_url("light"),
         }
 
     from .views import admin, auth, dispatch, fleet, main, pilots, smartcars

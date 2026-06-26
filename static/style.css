@@ -99,6 +99,30 @@ a:hover { text-decoration: underline; }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
 .brand:hover { opacity: .85; }
 .leaf { font-size: 30px; }
+/* Topbar logo: scale any uploaded image to a fixed height, width auto so the
+   aspect ratio is preserved (capped so a wide wordmark can't break the bar). */
+.brand-logo { height: 34px; width: auto; max-width: 200px; display: block; }
+/* Show the variant matching the active theme. Default (no/dark theme) shows the
+   dark-mode logo; light theme swaps to the light-mode one. */
+.brand-logo-light { display: none; }
+[data-theme="light"] .brand-logo-dark { display: none; }
+[data-theme="light"] .brand-logo-light { display: block; }
+
+/* Site-logo admin: side-by-side dark/light preview tiles on the Site admin page. */
+.logo-admin-grid { display: flex; gap: 14px; }
+.logo-admin-col { flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.logo-preview {
+  width: 100%;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.logo-preview img { max-height: 40px; max-width: 90%; width: auto; }
+.logo-preview-dark { background: #13171f; }
+.logo-preview-light { background: #eef1f6; }
 .brand-name { font-weight: 700; font-size: 17px; letter-spacing: .4px; }
 .brand-sub { font-size: 11.5px; color: var(--text-muted); letter-spacing: .6px; text-transform: uppercase; }
 
