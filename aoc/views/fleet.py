@@ -32,7 +32,7 @@ def index():
 
 def _read_form(existing=None):
     load_type = request.form.get("load_type", "pax")
-    if load_type not in ("pax", "cargo", "charter"):
+    if load_type not in ("pax", "cargo"):
         load_type = "pax"
     form = {
         "registration": request.form.get("registration", "").strip().upper(),
@@ -40,6 +40,7 @@ def _read_form(existing=None):
         "variant": request.form.get("variant", "").strip(),
         "load_type": load_type,
         "capacity": request.form.get("capacity", "").strip(),
+        "range_nm": request.form.get("range_nm", "").strip(),
         "status": request.form.get("status", "active"),
         "simbrief_url": request.form.get("simbrief_url", "").strip(),
         "livery_url": request.form.get("livery_url", "").strip(),
@@ -58,10 +59,16 @@ def _read_form(existing=None):
         errors.append(f"{cap_label} must be a whole number.")
         capacity = 0
     # Store the number in the column that matches the load type; keep the
-    # other at zero so the two are never ambiguous. Charter aircraft carry
-    # passengers, so their capacity is seats like a PAX aircraft.
-    form["pax_capacity"] = capacity if load_type in ("pax", "charter") else 0
+    # other at zero so the two are never ambiguous.
+    form["pax_capacity"] = capacity if load_type == "pax" else 0
     form["cargo_capacity_kg"] = capacity if load_type == "cargo" else 0
+
+    # Maximum range in nm (optional). 0 means "not set" — eligible for any route.
+    try:
+        form["range_nm"] = max(0, int(form["range_nm"] or "0"))
+    except ValueError:
+        errors.append("Range must be a whole number of nautical miles.")
+        form["range_nm"] = 0
 
     if form["status"] not in STATUSES:
         form["status"] = "active"
@@ -118,12 +125,13 @@ def new():
             cur = db.execute(
                 """INSERT INTO aircraft
                    (registration, icao_type, variant, load_type, pax_capacity,
-                    cargo_capacity_kg, status, simbrief_url, livery_url, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    cargo_capacity_kg, range_nm, status, simbrief_url, livery_url,
+                    notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (form["registration"], form["icao_type"], form["variant"],
                  form["load_type"], form["pax_capacity"], form["cargo_capacity_kg"],
-                 form["status"], form["simbrief_url"], form["livery_url"],
-                 form["notes"]),
+                 form["range_nm"], form["status"], form["simbrief_url"],
+                 form["livery_url"], form["notes"]),
             )
             saved, skipped = _save_images(db, cur.lastrowid,
                                           request.files.getlist("images"))
@@ -141,7 +149,7 @@ def new():
         return render_template("fleet_form.html", form=form, aircraft=None)
     blank = {k: "" for k in ("registration", "icao_type", "variant", "simbrief_url",
                              "livery_url", "notes")}
-    blank.update(load_type="pax", capacity="", status="active")
+    blank.update(load_type="pax", capacity="", range_nm="", status="active")
     return render_template("fleet_form.html", form=blank, aircraft=None)
 
 
@@ -161,13 +169,13 @@ def edit(aircraft_id):
         if not errors:
             db.execute(
                 """UPDATE aircraft SET registration = ?, icao_type = ?, variant = ?,
-                   load_type = ?, pax_capacity = ?, cargo_capacity_kg = ?, status = ?,
-                   simbrief_url = ?, livery_url = ?, notes = ?
+                   load_type = ?, pax_capacity = ?, cargo_capacity_kg = ?, range_nm = ?,
+                   status = ?, simbrief_url = ?, livery_url = ?, notes = ?
                    WHERE id = ?""",
                 (form["registration"], form["icao_type"], form["variant"],
                  form["load_type"], form["pax_capacity"], form["cargo_capacity_kg"],
-                 form["status"], form["simbrief_url"], form["livery_url"],
-                 form["notes"], aircraft_id),
+                 form["range_nm"], form["status"], form["simbrief_url"],
+                 form["livery_url"], form["notes"], aircraft_id),
             )
             db.commit()
             flash(f"{form['registration']} updated.", "success")
@@ -182,6 +190,8 @@ def edit(aircraft_id):
     data["capacity"] = (aircraft["cargo_capacity_kg"]
                         if aircraft["load_type"] == "cargo"
                         else aircraft["pax_capacity"])
+    # 0 means "not set" — show it blank so the placeholder shows instead.
+    data["range_nm"] = aircraft["range_nm"] or ""
     return render_template("fleet_form.html", form=data, aircraft=aircraft,
                            images=aircraft_images(db, aircraft_id))
 

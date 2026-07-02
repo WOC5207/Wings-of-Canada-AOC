@@ -14,17 +14,14 @@
 </label>
 <div class="field-row">
   <label>Aircraft type
-    <div class="segmented segmented-stacked" role="radiogroup"
-         aria-label="Passenger, cargo or charter aircraft">
+    <div class="segmented" role="radiogroup"
+         aria-label="Passenger or cargo aircraft">
       <input type="radio" id="lt-pax" name="load_type" value="pax"
-             {{ 'checked' if form['load_type'] not in ('cargo', 'charter') }}>
+             {{ 'checked' if form['load_type'] != 'cargo' }}>
       <label for="lt-pax"><span class="seg-icon">✈</span><span>Passenger</span></label>
       <input type="radio" id="lt-cargo" name="load_type" value="cargo"
              {{ 'checked' if form['load_type'] == 'cargo' }}>
       <label for="lt-cargo"><span class="seg-icon">📦</span><span>Cargo</span></label>
-      <input type="radio" id="lt-charter" name="load_type" value="charter"
-             {{ 'checked' if form['load_type'] == 'charter' }}>
-      <label for="lt-charter"><span class="seg-icon">⭐</span><span>Charter</span></label>
     </div>
   </label>
   <label>
@@ -33,6 +30,12 @@
            inputmode="numeric" required placeholder="0">
   </label>
 </div>
+<label>Range, nm <span class="muted">(optional — leave blank for no limit)</span>
+  <input id="range_nm" name="range_nm" value="{{ form['range_nm'] }}"
+         inputmode="numeric" placeholder="e.g. 3000">
+  <span class="muted small">Aircraft are offered on a route only when their range
+    reaches the route distance.</span>
+</label>
 <label>Status
   <select name="status">
     {% for s in ('active', 'maintenance', 'retired') %}

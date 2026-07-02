@@ -4,25 +4,78 @@
 <div class="page-head">
   <h1>Route network</h1>
   <div class="actions">
+    {% if not is_admin %}
     <form method="get" class="searchbar">
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input type="hidden" name="dir" value="{{ dir }}">
       <input name="q" value="{{ q }}" placeholder="Search CW number, ICAO, type…">
       <button class="btn" type="submit">Search</button>
     </form>
-    <a class="btn" href="{{ url_for('pilots.log_flight', mode='charter') }}">Dispatch charter</a>
-    {% if g.user['role'] == 'admin' %}
-    <a class="btn btn-primary" href="{{ url_for('dispatch.new_route') }}">+ New route</a>
     {% endif %}
+    <a class="btn" href="{{ url_for('pilots.log_flight', mode='training') }}">Dispatch local training</a>
+    <a class="btn btn-primary" href="{{ url_for('dispatch.new_route') }}">+ New route</a>
   </div>
 </div>
 
+{% if is_admin %}
+<form method="get" class="card route-filters">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ dir }}">
+  <div class="filter-grid">
+    <label>Search
+      <input name="q" value="{{ q }}" placeholder="CW number, ICAO, type…">
+    </label>
+    <label>Departure
+      <input name="dep" value="{{ dep }}" maxlength="4" class="mono upper" placeholder="ICAO">
+    </label>
+    <label>Arrival
+      <input name="arr" value="{{ arr }}" maxlength="4" class="mono upper" placeholder="ICAO">
+    </label>
+    <label>Min distance (nm)
+      <input name="dist_min" value="{{ dist_min }}" inputmode="numeric" placeholder="0">
+    </label>
+    <label>Max distance (nm)
+      <input name="dist_max" value="{{ dist_max }}" inputmode="numeric" placeholder="∞">
+    </label>
+    <label>Added by
+      <select name="creator">
+        <option value="">Anyone</option>
+        {% for c in creators %}
+        <option value="{{ c['id'] }}" {{ 'selected' if creator_id == c['id']|string }}>{{ c['callsign'] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="filter-actions">
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+    <a class="btn btn-ghost" href="{{ url_for('dispatch.routes') }}">Clear</a>
+  </div>
+</form>
+{% endif %}
+
 <div class="card">
+  <div class="route-sort">
+    <span class="muted small">Sort by</span>
+    {% set sorts = [('callsign', 'Callsign'), ('distance', 'Distance'),
+                    ('dep_time', 'Departure'), ('block', 'Block time')] %}
+    {% for key, label in sorts %}
+    {% set nextdir = 'desc' if (sort == key and dir == 'asc') else 'asc' %}
+    <a class="sort-btn {{ 'active' if sort == key }}"
+       href="{{ url_for('dispatch.routes', sort=key, dir=nextdir, q=q or None,
+               dep=dep or None, arr=arr or None, dist_min=dist_min or None,
+               dist_max=dist_max or None, creator=creator_id or None) }}">
+      {{ label }}{% if sort == key %}
+      <span class="sort-arrow">{{ '↑' if dir == 'asc' else '↓' }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
 {% if routes %}
 <table>
   <thead>
     <tr>
       <th>Flight</th><th>Callsign</th><th>Route</th><th>Type</th><th>Dep&nbsp;(UTC)</th>
       <th>Aircraft</th><th>Distance</th><th>Block</th>
-      {% if g.user['role'] == 'admin' %}<th>Added by</th>{% endif %}<th></th>
+      {% if is_admin %}<th>Added by</th>{% endif %}<th></th>
     </tr>
   </thead>
   <tbody>
@@ -34,21 +87,21 @@
       <td><span class="badge load-{{ r.route_type }}">{{ 'Cargo' if r.route_type == 'cargo' else 'PAX' }}</span></td>
       <td class="mono">{{ r.dep_time or '—' }}</td>
       <td>
-        {% if r.approved %}
-        <select class="aircraft-select mono" aria-label="Approved aircraft for {{ r.flight_no }}">
-          {% for a in r.approved %}
+        {% if r.eligible %}
+        <select class="aircraft-select mono" aria-label="Eligible aircraft for {{ r.flight_no }}">
+          {% for a in r.eligible %}
           <option>{{ a }}</option>
           {% endfor %}
         </select>
-        {% else %}<span class="muted">Any aircraft</span>{% endif %}
+        {% else %}<span class="muted">None in range</span>{% endif %}
       </td>
       <td class="mono">{{ r.distance_nm ~ ' nm' if r.distance_nm else '—' }}</td>
       <td class="mono">{{ r.duration_min | hours if r.duration_min else '—' }}</td>
-      {% if g.user['role'] == 'admin' %}<td>{{ r.creator or '—' }}</td>{% endif %}
+      {% if is_admin %}<td>{{ r.creator or '—' }}</td>{% endif %}
       <td class="row-actions">
         <a class="btn btn-sm" href="{{ url_for('pilots.log_flight', route_id=r.id) }}">Log flight</a>
         <a class="btn btn-sm" href="{{ r.simbrief_url }}" target="_blank" rel="noopener">SimBrief</a>
-        {% if g.user['role'] == 'admin' %}
+        {% if is_admin %}
         <a class="btn btn-sm" href="{{ url_for('dispatch.edit_route', route_id=r.id) }}">Edit</a>
         <form method="post" action="{{ url_for('dispatch.delete_route', route_id=r.id) }}"
               onsubmit="return confirm('Delete {{ r.flight_no }} {{ r.dep_icao }} → {{ r.arr_icao }}?');">
@@ -62,8 +115,9 @@
 </table>
 {% else %}
 <p class="muted">
-  {% if q %}No routes match “{{ q }}”.{% else %}No routes yet — create the
-  first one with “New route”.{% endif %}
+  {% if q or dep or arr or dist_min or dist_max or creator_id %}No routes match
+  the current filters.{% else %}No routes yet — create the first one with
+  “New route”.{% endif %}
 </p>
 {% endif %}
 </div>

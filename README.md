@@ -26,10 +26,10 @@ DSM's reverse proxy for HTTPS. Follow the step-by-step guide in
   (members, fleet, routes, hours, latest activity) — nothing else, and no
   way to dispatch.
 - Register with email + personal callsign (**WOC** + up to 4 digits) +
-  password to become a **Standard** member: fly the scheduled network, file
-  ad-hoc charters, browse the fleet, log PIREPs.
-- **Administrators** additionally **create scheduled routes** (and choose which
-  aircraft are approved for each) and manage the fleet and the members:
+  password to become a **Standard** member: fly the scheduled network, **create
+  new routes**, dispatch **local training** flights, browse the fleet, log PIREPs.
+- **Administrators** additionally **edit and delete routes** and manage the fleet
+  and the members:
   **create pilot accounts** (email optional — handy for test accounts — with a
   set or auto-generated temporary password), change tiers, reset passwords,
   remove accounts, and **credit extra flights / hours** on top of a pilot's
@@ -39,9 +39,11 @@ DSM's reverse proxy for HTTPS. Follow the step-by-step guide in
 
 ### Fleet
 Administrators add aircraft with registration, ICAO type code, variant,
-a type of Passenger / Cargo / Charter (capacity in seats for passenger and
-charter, kilograms for cargo), status (Active / Maintenance / Retired),
-plus links to the SimBrief airframe profile and the livery download.
+a type of Passenger / Cargo (capacity in seats for passenger, kilograms for
+cargo), a maximum **range in nautical miles** (which decides the routes the
+airframe is eligible for — leave blank for no limit), status (Active /
+Maintenance / Retired), plus links to the SimBrief airframe profile and the
+livery download.
 
 ### Pilot profiles & ranks
 Each pilot has a profile showing total hours, completed flights, unique
@@ -69,35 +71,34 @@ Admin-credited hours/flights count toward the rank just like logged ones.
 ### Dispatch & route generation
 Flights come in two kinds:
 
-- **Scheduled** routes are created by **administrators** on the dispatch form by
+- **Scheduled** routes are created by **any pilot** on the dispatch form by
   entering departure and arrival airports — the ICAO fields **autocomplete** by
   code, airport name or city and show each airport's UTC zone. The system
   assigns the flight number
   (**CW** + 4 digits) and matching radio callsign (**WOC** + same 4 digits); a
   checkbox decides whether the **return leg** is generated (on by default), each
   leg numbered independently on its own departure city. The route is marked
-  **Passenger or Cargo** and can carry a scheduled **departure time (UTC)**. The
-  admin **ticks the aircraft approved for the route** in a compact fleet list
-  grouped by Passenger / Cargo / Charter — a passenger route only offers
-  passenger and charter airframes, a cargo route only freighters (leave all
-  unticked to allow any matching active aircraft).
+  **Passenger or Cargo** and can carry a scheduled **departure time (UTC)**.
+  **Eligible airframes are decided automatically**: any active aircraft of the
+  matching type (PAX/Cargo) whose **range** reaches the route distance may fly it
+  — set each airframe's range on the Fleet page.
   The **distance and block time are estimated automatically** from a bundled
   offline airport database (5,700 airports, great-circle distance plus a per-type
   cruise speed model) — both stay editable, and anything left blank is estimated
   server-side too. Every route row has a one-click *Plan in SimBrief* button
-  pre-filled with airline code, flight number, origin, destination, type and
-  the scheduled departure time (EOBT). Administrators can **Edit** any route
-  afterwards to change its approved aircraft, Passenger/Cargo type, departure
+  pre-filled with airline code, flight number, origin, destination and the
+  scheduled departure time (EOBT). **Administrators** can **Edit** or **delete**
+  any route afterwards to change its Passenger/Cargo type, departure
   time, distance/block time or notes — the departure, arrival and flight number
   stay fixed.
-- **Charter** flights are filed ad-hoc by any pilot on the flight-log form: pick
-  any active aircraft, type a flight number in the reserved **9900–9999** block,
-  and the hub/parity numbering rules are ignored. The route network page has a
-  **Dispatch charter** shortcut that opens the flight log with the charter tab
-  pre-selected.
+- **Local Training** flights are filed ad-hoc by any pilot on the flight-log form:
+  a same-airport local session with any active aircraft and a flight number in the
+  reserved **9900–9999** block; the hub/parity numbering rules are ignored. The
+  route network page has a **Dispatch local training** shortcut that opens the
+  flight log with the training tab pre-selected.
 
 When a pilot logs a **scheduled** flight they pick the route, then choose only
-from the aircraft an administrator approved for it.
+from the aircraft eligible for it (matching type, enough range).
 
 #### Numbering rules implemented
 
@@ -116,8 +117,8 @@ the **departure** hub wins.
 | 8 | US airport, no Canadian airport involved |
 | 9 | neither Canada nor the US involved (scheduled **9000–9899** only) |
 
-The **9900–9999** block is reserved for pilot-filed **charter** flights, so the
-scheduled 9xxx series stops at 9899.
+The **9900–9999** block is reserved for pilot-filed **Local Training** flights, so
+the scheduled 9xxx series stops at 9899.
 
 So `CYYZ → CYVR` is a Toronto-domestic **5xxx** number, while its return
 `CYVR → CYYZ` is a Vancouver **1xxx** number — the two legs are not coupled.

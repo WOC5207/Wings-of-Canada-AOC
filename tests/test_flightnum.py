@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from aoc.flightnum import (CHARTER_MAX, CHARTER_MIN, allocate_one, classify,
-                           is_charter_number, series_range, SeriesFullError)
+from aoc.flightnum import (TRAINING_MAX, TRAINING_MIN, allocate_one, classify,
+                           is_training_number, series_range, SeriesFullError)
 
 # A seeded RNG keeps the allocation tests deterministic despite randomization.
 RNG = random.Random(1234)
@@ -84,15 +84,15 @@ def main():
     ok &= check_true("allocation is randomized (not always x000)",
                      len(samples) > 5 and all(in_series(n, 5, 0) for n in samples))
 
-    # --- charter block (9900-9999) reserved, scheduled 9xxx caps at 9899 -
-    ok &= check("9xxx scheduled series stops before the charter block",
-                max(series_range(9)), CHARTER_MIN - 1)
-    ok &= check_true("scheduled rest-of-world numbers never enter the charter block",
-                     all(alloc("EGLL", "VHHH") < CHARTER_MIN for _ in range(40)))
-    ok &= check_true("is_charter_number covers 9900-9999 only",
-                     is_charter_number(CHARTER_MIN) and is_charter_number(CHARTER_MAX)
-                     and not is_charter_number(CHARTER_MIN - 1)
-                     and not is_charter_number(CHARTER_MAX + 1))
+    # --- training block (9900-9999) reserved, scheduled 9xxx caps at 9899 -
+    ok &= check("9xxx scheduled series stops before the training block",
+                max(series_range(9)), TRAINING_MIN - 1)
+    ok &= check_true("scheduled rest-of-world numbers never enter the training block",
+                     all(alloc("EGLL", "VHHH") < TRAINING_MIN for _ in range(40)))
+    ok &= check_true("is_training_number covers 9900-9999 only",
+                     is_training_number(TRAINING_MIN) and is_training_number(TRAINING_MAX)
+                     and not is_training_number(TRAINING_MIN - 1)
+                     and not is_training_number(TRAINING_MAX + 1))
 
     # --- round-trips are numbered independently --------------------------
     out, ret = round_trip("CYYZ", "CYVR")

@@ -24,7 +24,7 @@
       <td class="mono strong"><a href="{{ url_for('fleet.detail', aircraft_id=a['id']) }}">{{ a['registration'] }}</a></td>
       <td class="mono">{{ a['icao_type'] }}</td>
       <td>{{ a['variant'] or '—' }}</td>
-      <td><span class="badge load-{{ a['load_type'] }}">{{ {'cargo': 'Cargo', 'charter': 'Charter'}.get(a['load_type'], 'PAX') }}</span></td>
+      <td><span class="badge load-{{ a['load_type'] }}">{{ 'Cargo' if a['load_type'] == 'cargo' else 'PAX' }}</span></td>
       <td class="mono">
         {%- if a['load_type'] == 'cargo' -%}
           {{ '{:,}'.format(a['cargo_capacity_kg']) }} kg

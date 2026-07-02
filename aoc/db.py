@@ -47,9 +47,13 @@ CREATE TABLE IF NOT EXISTS aircraft (
     icao_type         TEXT NOT NULL,
     variant           TEXT NOT NULL DEFAULT '',
     load_type         TEXT NOT NULL DEFAULT 'pax'
-                      CHECK (load_type IN ('pax', 'cargo', 'charter')),
+                      CHECK (load_type IN ('pax', 'cargo')),
     pax_capacity      INTEGER NOT NULL DEFAULT 0,
     cargo_capacity_kg INTEGER NOT NULL DEFAULT 0,
+    -- Maximum still-air range in nautical miles. Drives which airframes are
+    -- eligible for a route (range >= route distance). 0 means "not set" and
+    -- places no range limit, so an aircraft stays eligible for any distance.
+    range_nm          INTEGER NOT NULL DEFAULT 0,
     status            TEXT NOT NULL DEFAULT 'active'
                       CHECK (status IN ('active', 'maintenance', 'retired')),
     simbrief_url      TEXT NOT NULL DEFAULT '',
@@ -89,8 +93,11 @@ CREATE TABLE IF NOT EXISTS pireps (
     dep_icao        TEXT NOT NULL,
     arr_icao        TEXT NOT NULL,
     aircraft_label  TEXT NOT NULL DEFAULT '',
+    -- 'charter' is retired (no new charters are filed) but kept in the CHECK so
+    -- pre-existing charter logbook rows stay valid. 'training' is the Local
+    -- Training flight type (same-airport, 9900-9999 block).
     flight_type     TEXT NOT NULL DEFAULT 'scheduled'
-                    CHECK (flight_type IN ('scheduled', 'charter')),
+                    CHECK (flight_type IN ('scheduled', 'charter', 'training')),
     flight_date     TEXT NOT NULL,
     flight_time_min INTEGER NOT NULL,
     remarks         TEXT NOT NULL DEFAULT '',
@@ -173,7 +180,7 @@ CREATE TABLE IF NOT EXISTS bids (
     dep_icao    TEXT NOT NULL,
     arr_icao    TEXT NOT NULL,
     flight_type TEXT NOT NULL DEFAULT 'scheduled'
-                CHECK (flight_type IN ('scheduled', 'charter')),
+                CHECK (flight_type IN ('scheduled', 'charter', 'training')),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -517,6 +524,53 @@ def _migrate(conn):
                        livery_url, notes, created_at FROM aircraft;
             DROP TABLE aircraft;
             ALTER TABLE aircraft_rebuild RENAME TO aircraft;
+            PRAGMA foreign_keys=ON;
+            """
+        )
+
+    # Aircraft now carry a maximum range (nm). Route eligibility is computed from
+    # range vs the route distance, so older rows backfill to 0 ("not set" => no
+    # range limit). Re-query columns: the block above may have rebuilt the table.
+    ac_cols = [r["name"] for r in conn.execute("PRAGMA table_info(aircraft)").fetchall()]
+    if "range_nm" not in ac_cols:
+        conn.execute("ALTER TABLE aircraft ADD COLUMN range_nm INTEGER NOT NULL DEFAULT 0")
+
+    # Charter generation was retired. Charter airframes carried passengers, so
+    # fold any that exist into the PAX category (their CHECK still admits the old
+    # value, so no rebuild is needed to convert the rows).
+    conn.execute("UPDATE aircraft SET load_type = 'pax' WHERE load_type = 'charter'")
+
+    # Local Training flights reuse the freed 9900-9999 block and are stored with
+    # flight_type='training'. The bids table baked CHECK (flight_type IN
+    # ('scheduled','charter')) into its definition, which SQLite cannot widen with
+    # ALTER, so rebuild it once to admit 'training' (ids preserved; the
+    # informational pireps.bid_id still lines up). pireps needs no rebuild — its
+    # flight_type column was added by ALTER and carries no CHECK.
+    bd = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='bids'"
+    ).fetchone()
+    if bd and "training" not in bd["sql"]:
+        conn.executescript(
+            """
+            PRAGMA foreign_keys=OFF;
+            CREATE TABLE bids_rebuild (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                route_id    INTEGER REFERENCES routes(id) ON DELETE SET NULL,
+                aircraft_id INTEGER REFERENCES aircraft(id) ON DELETE SET NULL,
+                flight_no   TEXT NOT NULL,
+                dep_icao    TEXT NOT NULL,
+                arr_icao    TEXT NOT NULL,
+                flight_type TEXT NOT NULL DEFAULT 'scheduled'
+                            CHECK (flight_type IN ('scheduled', 'charter', 'training')),
+                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO bids_rebuild
+                SELECT id, user_id, route_id, aircraft_id, flight_no, dep_icao,
+                       arr_icao, flight_type, created_at FROM bids;
+            DROP TABLE bids;
+            ALTER TABLE bids_rebuild RENAME TO bids;
+            CREATE INDEX IF NOT EXISTS idx_bids_user ON bids(user_id);
             PRAGMA foreign_keys=ON;
             """
         )

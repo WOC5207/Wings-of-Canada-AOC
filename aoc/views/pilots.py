@@ -7,9 +7,10 @@ from flask import (Blueprint, flash, g, redirect, render_template, request,
                    url_for)
 
 from ..db import get_db
-from ..flightnum import (CHARTER_MAX, CHARTER_MIN, callsign as route_callsign,
-                        flight_no, is_charter_number)
+from ..flightnum import (TRAINING_MAX, TRAINING_MIN, callsign as route_callsign,
+                        flight_no, is_training_number)
 from ..security import login_required, role_required
+from .dispatch import eligible_aircraft_ids
 
 bp = Blueprint("pilots", __name__, url_prefix="/pilots")
 
@@ -117,18 +118,13 @@ def log_flight():
            ORDER BY icao_type, registration"""
     ).fetchall()
 
-    # Aircraft an admin approved per scheduled route (empty => any active aircraft).
-    approved = {}
-    for r in db.execute("SELECT route_id, aircraft_id FROM route_aircraft").fetchall():
-        approved.setdefault(r["route_id"], []).append(r["aircraft_id"])
-
-    # The form opens in exactly ONE mode. "Dispatch charter" on the route
-    # network passes ?mode=charter; a route row's "Log flight" button passes
+    # The form opens in exactly ONE mode. "Dispatch local training" on the route
+    # network passes ?mode=training; a route row's "Log flight" button passes
     # ?route_id=N (scheduled, locked to that route). A bare /pilots/log has
     # nothing to log, so send the pilot to the dispatch list to pick.
     mode = request.values.get("mode", "")
     route_id_raw = request.values.get("route_id", "")
-    if mode != "charter":
+    if mode != "training":
         mode = "scheduled" if route_id_raw else ""
 
     route = None
@@ -140,15 +136,17 @@ def log_flight():
             return redirect(url_for("dispatch.routes"))
     elif not mode:
         flash("Pick a scheduled flight from the route network, or use "
-              "“Dispatch charter” for a one-off flight.", "error")
+              "“Dispatch local training” for a local session.", "error")
         return redirect(url_for("dispatch.routes"))
 
-    # Aircraft on offer: a charter may use any active aircraft; a scheduled
-    # flight only what an admin approved for the route (empty => any).
-    allowed = approved.get(route["id"]) if route is not None else None
+    # Aircraft on offer: a local training flight may use any active aircraft; a
+    # scheduled flight only airframes whose load type matches the route and
+    # whose range reaches the route distance (range 0 == no limit).
+    allowed = (eligible_aircraft_ids(db, route["route_type"], route["distance_nm"])
+               if route is not None else None)
     fleet_options = []
     for a in fleet:
-        if allowed and a["id"] not in allowed:
+        if allowed is not None and a["id"] not in allowed:
             continue
         if a["load_type"] == "cargo":
             capacity = f"{a['cargo_capacity_kg']:,} kg" if a["cargo_capacity_kg"] else ""
@@ -168,9 +166,8 @@ def log_flight():
         "mode": mode,
         "route_id": route_id_raw,
         "aircraft_id": request.form.get("aircraft_id", ""),
-        "dep": request.form.get("dep", "").strip().upper(),
-        "arr": request.form.get("arr", "").strip().upper(),
-        "charter_number": request.form.get("charter_number", "").strip(),
+        "airport": request.form.get("airport", "").strip().upper(),
+        "training_number": request.form.get("training_number", "").strip(),
         "flight_date": request.form.get("flight_date", date.today().isoformat()),
         "hours": request.form.get("hours", "").strip(),
         "minutes": request.form.get("minutes", "").strip(),
@@ -206,25 +203,23 @@ def log_flight():
         if mode == "scheduled":
             route_id, number = route["id"], route["number"]
             dep_icao, arr_icao = route["dep_icao"], route["arr_icao"]
-            if aircraft is not None and allowed and aircraft["id"] not in allowed:
+            if aircraft is not None and allowed is not None and aircraft["id"] not in allowed:
                 errors.append(
-                    "That aircraft isn't approved for this scheduled route."
+                    "That aircraft isn't eligible for this route — wrong type or "
+                    "not enough range."
                 )
-        else:  # charter — pilot sets everything, no restrictions
-            if not ICAO_RE.match(form["dep"]):
-                errors.append("Charter departure must be a 4-character ICAO code.")
-            if not ICAO_RE.match(form["arr"]):
-                errors.append("Charter arrival must be a 4-character ICAO code.")
-            if form["dep"] and form["dep"] == form["arr"]:
-                errors.append("Departure and arrival cannot be the same airport.")
-            dep_icao, arr_icao = form["dep"], form["arr"]
+        else:  # training — a local session: one airport, any aircraft
+            if not ICAO_RE.match(form["airport"]):
+                errors.append("Training airport must be a 4-character ICAO code.")
+            # A local training flight begins and ends at the same airport.
+            dep_icao = arr_icao = form["airport"]
             try:
-                number = int(form["charter_number"])
+                number = int(form["training_number"])
             except ValueError:
                 number = None
-            if number is None or not is_charter_number(number):
+            if number is None or not is_training_number(number):
                 errors.append(
-                    f"Charter flight number must be between {CHARTER_MIN} and {CHARTER_MAX}."
+                    f"Training flight number must be between {TRAINING_MIN} and {TRAINING_MAX}."
                 )
 
         if not errors:
@@ -257,7 +252,7 @@ def log_flight():
     return render_template(
         "pirep_new.html", form=form, fleet=fleet_options,
         route_label=route_label,
-        charter_min=CHARTER_MIN, charter_max=CHARTER_MAX,
+        training_min=TRAINING_MIN, training_max=TRAINING_MAX,
     )
 
 

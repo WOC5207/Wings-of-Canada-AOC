@@ -26,6 +26,7 @@ from .. import airports
 from ..db import get_db
 from ..flightnum import callsign as fmt_callsign, flight_no as fmt_flight_no
 from ..ranks import rank_for
+from .dispatch import eligible_aircraft_ids
 
 bp = Blueprint("smartcars", __name__, url_prefix="/smartcars/api")
 
@@ -341,16 +342,14 @@ def data_flight_types():
 # --------------------------------------------------------------------------- #
 
 def _route_aircraft_ids(db, route_id):
-    """Aircraft ids approved for a route; an empty approval list means any active
-    aircraft may fly it (matching the website's dispatch rule)."""
-    rows = db.execute(
-        "SELECT aircraft_id FROM route_aircraft WHERE route_id = ?", (route_id,)
-    ).fetchall()
-    if rows:
-        return [r["aircraft_id"] for r in rows]
-    return [r["id"] for r in db.execute(
-        "SELECT id FROM aircraft WHERE status = 'active'"
-    ).fetchall()]
+    """Aircraft ids eligible for a route: the load type matches the route and the
+    range reaches the route distance (matching the website's dispatch rule)."""
+    route = db.execute(
+        "SELECT route_type, distance_nm FROM routes WHERE id = ?", (route_id,)
+    ).fetchone()
+    if route is None:
+        return []
+    return eligible_aircraft_ids(db, route["route_type"], route["distance_nm"])
 
 
 def _add_minutes(hhmm, minutes):
@@ -649,25 +648,32 @@ def flights_rebook():
     return jsonify({"bidID": bid["id"]})
 
 
-@bp.route("/flights/charter", methods=("POST", "OPTIONS"))
+@bp.route("/flights/training", methods=("POST", "OPTIONS"))
 @token_required
-def flights_charter():
-    """File an ad-hoc charter booking. The pilot supplies the number, endpoints
-    and aircraft; we keep only the numeric part of the number (smartCARS picks
-    it, so we don't enforce the website's 9900-9999 charter reservation here)."""
+def flights_training():
+    """File an ad-hoc Local Training booking: a same-airport session with any
+    aircraft. The pilot supplies the number (we keep only its numeric part) and
+    the airport; departure and arrival must be the same."""
     db = get_db()
     number = "".join(ch for ch in str(_param("number") or "") if ch.isdigit())
     if not number:
-        return _error("A charter flight number is required", 400)
+        return _error("A training flight number is required", 400)
     dep = (_param("departure") or "").strip().upper()
     arr = (_param("arrival") or "").strip().upper()
-    if not dep or not arr:
-        return _error("Charter departure and arrival are required", 400)
+    # A local training flight begins and ends at the same airport; accept a
+    # single endpoint and mirror it, but reject a genuine mismatch.
+    dep = dep or arr
+    arr = arr or dep
+    if not dep:
+        return _error("A training airport is required", 400)
+    if dep != arr:
+        return _error(
+            "A local training flight must depart and arrive at the same airport", 400
+        )
     aircraft_id = _as_int(_param("aircraft"))
-    cargo = str(_param("type") or "").upper().startswith("C")
     cur = db.execute(
         """INSERT INTO bids (user_id, route_id, aircraft_id, flight_no, dep_icao,
-           arr_icao, flight_type) VALUES (?, NULL, ?, ?, ?, ?, 'charter')""",
+           arr_icao, flight_type) VALUES (?, NULL, ?, ?, ?, ?, 'training')""",
         (g.sc_pilot["id"], aircraft_id, number, dep, arr),
     )
     db.commit()

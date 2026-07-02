@@ -46,6 +46,7 @@
 [data-theme="light"] .load-pax          { color: #1971c2; }
 [data-theme="light"] .load-cargo        { color: #b3690b; }
 [data-theme="light"] .load-charter      { color: #2b8a3e; }
+[data-theme="light"] .load-training     { color: #0c8599; }
 [data-theme="light"] .rank-student        { color: #5c6878; }
 [data-theme="light"] .rank-private        { color: #1971c2; }
 [data-theme="light"] .rank-commercial     { color: #0c8599; }
@@ -288,6 +289,7 @@ tr:hover td { background: var(--row-hover); }
 .load-pax { background: rgba(77, 171, 247, .15); color: #74c0fc; }
 .load-cargo { background: rgba(232, 153, 12, .16); color: #ffc94d; }
 .load-charter { background: rgba(47, 158, 68, .16); color: #69db7c; }
+.load-training { background: rgba(12, 133, 153, .18); color: #66d9e8; }
 
 /* Small count pill on the Admin nav / menu entries (pending flight reports). */
 .nav-badge {
@@ -450,6 +452,27 @@ input.mono, select.mono { font-family: var(--mono); }
   color: #1a1206;
 }
 .sort-arrow { font-weight: 700; }
+
+/* ---------- route network: admin filters + sort row ---------- */
+.route-filters { margin-bottom: 16px; }
+.route-filters .filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.route-filters label { font-weight: 600; }
+.route-filters .filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.route-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
 
 .roster-table td { vertical-align: middle; }
 .roster-callsign { font-size: 15px; }
