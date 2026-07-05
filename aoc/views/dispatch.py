@@ -413,3 +413,23 @@ def delete_route(route_id):
         flash(f"Route {flight_no(row['number'])} "
               f"{row['dep_icao']} → {row['arr_icao']} was deleted.", "success")
     return redirect(url_for("dispatch.routes"))
+
+
+@bp.route("/bulk-delete", methods=("POST",))
+@role_required("admin")
+def bulk_delete_routes():
+    """Delete every route ticked in the route network's selection column."""
+    db = get_db()
+    ids = [int(x) for x in request.form.getlist("route_ids") if x.isdigit()]
+    deleted = 0
+    if ids:
+        marks = ",".join("?" * len(ids))
+        deleted = db.execute(
+            f"DELETE FROM routes WHERE id IN ({marks})", ids
+        ).rowcount
+        db.commit()
+    if deleted:
+        flash(f"Deleted {deleted} route{'s' if deleted != 1 else ''}.", "success")
+    else:
+        flash("Select at least one route to delete.", "error")
+    return redirect(url_for("dispatch.routes"))

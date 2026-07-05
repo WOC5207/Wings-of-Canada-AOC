@@ -75,12 +75,14 @@ def create_app() -> Flask:
             "site_logo_light": _logo_url("light"),
         }
 
-    from .views import admin, auth, dispatch, fleet, main, pilots, smartcars
+    from .views import (admin, auth, dispatch, fleet, flights, main, pilots,
+                        smartcars)
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(main.bp)
     app.register_blueprint(dispatch.bp)
     app.register_blueprint(fleet.bp)
+    app.register_blueprint(flights.bp)
     app.register_blueprint(pilots.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(smartcars.bp)

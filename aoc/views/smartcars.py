@@ -789,7 +789,11 @@ def flights_complete():
     if pirep is None:
         return _error("No active flight", 404)
 
-    flight_time_min = round((_param("flightTime") or 0) * 60)
+    # flightTime arrives as a number in JSON but as a string in form data.
+    try:
+        flight_time_min = round(float(_param("flightTime") or 0) * 60)
+    except (TypeError, ValueError):
+        flight_time_min = 0
     landing_rate = _as_int(_param("landingRate"))
     fuel_used = _as_int(_param("fuelUsed"))
     comments = (_param("comments") or "").strip()

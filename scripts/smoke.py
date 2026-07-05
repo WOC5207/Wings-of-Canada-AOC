@@ -432,6 +432,58 @@ status, page = call(member, "/dispatch/?sort=distance&dir=desc")
 check("any pilot can sort the route network",
       status == 200 and 'class="sort-btn active' in page)
 
+# --- route network: admin multi-select + bulk delete -------------------------
+status, page = call(admin, "/dispatch/")
+check("admin sees the selection column and Select all",
+      'class="bulk-check"' in page and "Select all" in page
+      and 'id="bulk-form"' in page)
+# Every row checkbox must link back to the bulk form (it sits outside the table).
+check("selection checkboxes are linked to the bulk form",
+      page.count('form="bulk-form"') == page.count('class="bulk-check"'))
+status, page = call(member, "/dispatch/")
+check("standard member has no selection column",
+      'class="bulk-check"' not in page and 'id="bulk-form"' not in page)
+
+# Create two throwaway routes and bulk-delete them in one submission.
+_, bulk_a, _ = new_route("CYQB", "CYOW", create_return=False)
+_, bulk_b, _ = new_route("CYXE", "CYQR", create_return=False)
+listing = call(admin, "/dispatch/")[1]
+bulk_ids = []
+for n in (bulk_a, bulk_b):
+    row = next(r for r in listing.split("<tr") if f"CW{n:04d}" in r)
+    bulk_ids.append(re.search(r"/dispatch/(\d+)/delete", row).group(1))
+status, page = call(admin, "/dispatch/bulk-delete", {"route_ids": bulk_ids})
+check("bulk delete removes every selected route",
+      "Deleted 2 routes" in page
+      and f"CW{bulk_a:04d}" not in page and f"CW{bulk_b:04d}" not in page)
+
+status, page = call(admin, "/dispatch/bulk-delete", {})
+check("bulk delete with nothing selected is rejected",
+      "at least one route" in page)
+
+status, page = call(member, "/dispatch/bulk-delete", {"route_ids": ["1"]})
+check("standard member cannot bulk delete routes",
+      "requires Administrator access" in page)
+
+# --- flights tab: completed flights with smartCARS data ----------------------
+status, page = call(admin, "/flights/")
+check("flights tab lists completed flights",
+      "Completed flights" in page and f"CW{r1_out:04d}" in page
+      and "CW9905" in page)
+# Manual logs carry no ACARS data — the smartCARS columns stay empty.
+check("manual flights show no smartCARS data", "Manual" in page and "—" in page)
+
+# The first PIREP (id 1) was logged manually: detail page shows the empty state.
+status, page = call(admin, "/flights/1")
+check("flight detail page loads",
+      f"CW{r1_out:04d}" in page and "Flight log" in page)
+check("manual flight detail shows the no-data empty states",
+      "No smartCARS data was recorded" in page
+      and "No in-flight telemetry" in page)
+
+status, page = call(admin, "/flights/999999")
+check("unknown flight redirects to the list", "Flight not found" in page)
+
 # --- fleet: detail page and aircraft images ---------------------------------
 status, page = call(admin, "/fleet/")
 check("fleet registration links to the detail page", 'href="/fleet/1"' in page)
@@ -614,6 +666,9 @@ check("member pages still require sign-in", "Crew sign in" in page)
 
 status, page = call(anon, "/fleet/")
 check("fleet page still requires sign-in", "Crew sign in" in page)
+
+status, page = call(anon, "/flights/")
+check("flights page requires sign-in", "Crew sign in" in page)
 
 print()
 if FAILED:

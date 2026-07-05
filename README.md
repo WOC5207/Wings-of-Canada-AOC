@@ -45,6 +45,14 @@ airframe is eligible for — leave blank for no limit), status (Active /
 Maintenance / Retired), plus links to the SimBrief airframe profile and the
 livery download.
 
+### Flights
+The **Flights** tab lists every completed flight across the VA, newest first.
+Flights tracked with smartCARS show their recorded ACARS data — landing rate,
+fuel burn and a point count for the in-flight position log — and each flight's
+detail page includes the full telemetry trail (time, phase, altitude, heading,
+ground speed, position). Manually logged flights simply leave those fields
+empty.
+
 ### Pilot profiles & ranks
 Each pilot has a profile showing total hours, completed flights, unique
 routes flown, and their full logbook. Standard members file PIREPs
@@ -90,7 +98,8 @@ Flights come in two kinds:
   scheduled departure time (EOBT). **Administrators** can **Edit** or **delete**
   any route afterwards to change its Passenger/Cargo type, departure
   time, distance/block time or notes — the departure, arrival and flight number
-  stay fixed.
+  stay fixed. Admins can also **tick several routes at once** (with a Select all
+  toggle) and delete the whole selection in one action.
 - **Local Training** flights are filed ad-hoc by any pilot on the flight-log form:
   a same-airport local session with any active aircraft and a flight number in the
   reserved **9900–9999** block; the hub/parity numbering rules are ignored. The

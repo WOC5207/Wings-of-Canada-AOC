@@ -69,10 +69,23 @@
     </a>
     {% endfor %}
   </div>
+{% if is_admin and routes %}
+{# Selection toolbar. The row checkboxes live inside the table (which already
+   holds the per-row delete forms), so they link back here via form="bulk-form"
+   rather than nesting forms. #}
+<form method="post" action="{{ url_for('dispatch.bulk_delete_routes') }}"
+      id="bulk-form" class="bulk-bar">
+  <button type="button" class="btn btn-sm" id="select-all-btn">Select all</button>
+  <span class="muted small" id="bulk-count">0 selected</span>
+  <button class="btn btn-danger btn-sm" type="submit" id="bulk-delete-btn" disabled>
+    Delete selected</button>
+</form>
+{% endif %}
 {% if routes %}
 <table>
   <thead>
     <tr>
+      {% if is_admin %}<th class="bulk-col"></th>{% endif %}
       <th>Flight</th><th>Callsign</th><th>Route</th><th>Type</th><th>Dep&nbsp;(UTC)</th>
       <th>Aircraft</th><th>Distance</th><th>Block</th>
       {% if is_admin %}<th>Added by</th>{% endif %}<th></th>
@@ -81,6 +94,11 @@
   <tbody>
   {% for r in routes %}
     <tr>
+      {% if is_admin %}
+      <td><input type="checkbox" class="bulk-check" name="route_ids"
+                 value="{{ r.id }}" form="bulk-form"
+                 aria-label="Select {{ r.flight_no }}"></td>
+      {% endif %}
       <td class="mono strong">{{ r.flight_no }}</td>
       <td class="mono">{{ r.callsign }}</td>
       <td class="mono">{{ r.dep_icao }} → {{ r.arr_icao }}</td>
@@ -129,4 +147,47 @@
   independently. Legs departing Canada carry an even number, legs departing
   abroad an odd number.
 </p>
+
+{% if is_admin %}
+<script>
+(function () {
+  var form = document.getElementById('bulk-form');
+  if (!form) return;
+  var allBtn = document.getElementById('select-all-btn');
+  var delBtn = document.getElementById('bulk-delete-btn');
+  var count = document.getElementById('bulk-count');
+
+  function checks() { return [].slice.call(document.querySelectorAll('.bulk-check')); }
+  function selected() { return checks().filter(function (c) { return c.checked; }); }
+
+  function sync() {
+    var n = selected().length;
+    count.textContent = n + ' selected';
+    delBtn.disabled = n === 0;
+    allBtn.textContent = (n === checks().length && n > 0)
+      ? 'Clear selection' : 'Select all';
+  }
+
+  allBtn.addEventListener('click', function () {
+    var toggleOn = selected().length !== checks().length;
+    checks().forEach(function (c) { c.checked = toggleOn; });
+    sync();
+  });
+
+  document.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('bulk-check')) sync();
+  });
+
+  form.addEventListener('submit', function (e) {
+    var n = selected().length;
+    if (n === 0 || !confirm('Delete ' + n + ' selected route' +
+                            (n === 1 ? '' : 's') + '? This cannot be undone.')) {
+      e.preventDefault();
+    }
+  });
+
+  sync();
+})();
+</script>
+{% endif %}
 {% endblock %}

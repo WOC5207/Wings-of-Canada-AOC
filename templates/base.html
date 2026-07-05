@@ -38,6 +38,8 @@
        class="{{ 'active' if request.endpoint == 'main.dashboard' }}">Dashboard</a>
     <a href="{{ url_for('dispatch.routes') }}"
        class="{{ 'active' if request.blueprint == 'dispatch' }}">Dispatch</a>
+    <a href="{{ url_for('flights.index') }}"
+       class="{{ 'active' if request.blueprint == 'flights' }}">Flights</a>
     <a href="{{ url_for('fleet.index') }}"
        class="{{ 'active' if request.blueprint == 'fleet' }}">Fleet</a>
     <a href="{{ url_for('pilots.roster') }}"
