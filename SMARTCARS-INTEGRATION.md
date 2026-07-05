@@ -36,7 +36,8 @@ These three choices shape the rest of the work. Defaults below are the lowest-fr
    (`routes` is the published schedule, pilots just log what they flew).
    - *Default:* add a lightweight `bids` table. A pilot books a route in smartCARS → row in
      `bids`; `start` prefiles against it; `complete` turns it into a `pireps` row and clears
-     the bid. Charters create an ad-hoc bid with a pilot-supplied flight number.
+     the bid. Local Training flights create an ad-hoc same-airport bid with a
+     pilot-supplied flight number.
 2. **PIREP acceptance.** Today a logged flight counts immediately. smartCARS expects a
    prefile → pending → accepted lifecycle.
    - *Default:* add `status`/`state` to `pireps`; ACARS-filed PIREPs land as `pending` and an
@@ -71,7 +72,7 @@ CREATE TABLE IF NOT EXISTS bids (
     dep_icao    TEXT NOT NULL,
     arr_icao    TEXT NOT NULL,
     flight_type TEXT NOT NULL DEFAULT 'scheduled'
-                CHECK (flight_type IN ('scheduled', 'charter')),
+                CHECK (flight_type IN ('scheduled', 'charter', 'training')),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_bids_user ON bids(user_id);
@@ -138,13 +139,13 @@ others. It returns **JSON only** and must **not** use the session-cookie auth or
 | GET | `/data/airports` | bearer | `aoc/airports.py` | Resolve ICAOs the client asks about. |
 | GET | `/data/subfleets` | bearer | grouped `aircraft` | Synthesize one subfleet per `icao_type`; list its tails. |
 | GET | `/data/news` | bearer | `notams` | Map NOTAM banners to news items. |
-| GET | `/data/flight_types` | bearer | constant | `scheduled` / `charter`. |
-| GET | `/flights/search` | bearer | `routes` (+ `route_aircraft`) | Schedule search w/ dep/arr filters; include approved subfleets per route. |
+| GET | `/data/flight_types` | bearer | constant | `P` Passenger / `C` Cargo. |
+| GET | `/flights/search` | bearer | `routes` (range-eligible aircraft) | Schedule search w/ dep/arr filters; include the in-range subfleets per route. |
 | POST | `/flights/book` | bearer | insert `bids` | Snapshot route into a bid. |
 | POST | `/flights/unbook` | bearer | delete `bids` | |
 | POST | `/flights/rebook` | bearer | update `bids` | |
 | GET | `/flights/bookings` | bearer | `bids` for pilot | |
-| POST | `/flights/charter` | bearer | insert ad-hoc `bids` | Pilot supplies a charter number (reuse `is_charter_number` from `aoc/flightnum.py`). |
+| POST | `/flights/training` | bearer | insert ad-hoc `bids` | Local Training: pilot supplies a 9900–9999 number and a single airport (departure == arrival). |
 | POST | `/flights/start` | bearer | prefile `pireps` | Create `pireps` row `status='prefiled'` from the bid; return `{"trackingID": <pirep id>}`. |
 | POST | `/flights/update` | bearer | insert `acars_positions` | Per-tick telemetry (lat/lon/alt/hdg/gs/phase); update PIREP phase/flight_time. |
 | POST | `/flights/complete` | bearer | finalize `pireps` | Set `status='pending'`, fill landing_rate/fuel_used/flight_time/route, store raw blob, clear bid; return `{"pirepID": <id>}`. |
@@ -181,7 +182,7 @@ no rank table needed; compute it from the pilot's accepted totals.
    `/pilot/login|resume|verify`. Test with `curl` against a real pilot account.
 3. **Read-only data** — `/data/*`, `/flights/search`, `/pireps/*`. Now smartCARS can log in
    and browse the schedule.
-4. **Flight lifecycle** — `bids` + `/flights/book|unbook|start|update|complete|cancel|charter`.
+4. **Flight lifecycle** — `bids` + `/flights/book|unbook|start|update|complete|cancel|training`.
    This is the core; test a full flight end-to-end in smartCARS.
 5. **AOC UI** — Connect-smartCARS page + admin PIREP queue.
 6. **Register with smartCARS Central**, deploy behind the Synology proxy, fly an acceptance test.

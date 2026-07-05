@@ -1,48 +1,44 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Dispatch a charter' if form.mode == 'charter' else 'Log a flight' }}{% endblock %}
+{% block title %}{{ 'Dispatch local training' if form.mode == 'training' else 'Log a flight' }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>{{ 'Dispatch a charter' if form.mode == 'charter' else 'Log a scheduled flight' }}</h1>
+  <h1>{{ 'Dispatch a local training flight' if form.mode == 'training' else 'Log a scheduled flight' }}</h1>
 </div>
 
-{% if form.mode == 'charter' %}
+{% if form.mode == 'training' %}
 <div class="two-col">
   <div class="card">
     {% if not fleet %}
     <p class="muted">There are no active aircraft in the fleet yet — an
       administrator needs to add one in <a href="{{ url_for('fleet.index') }}">Fleet</a>.</p>
     {% else %}
-    <form method="post" class="stack" id="charter-form">
-      <input type="hidden" name="mode" value="charter">
+    <form method="post" class="stack" id="training-form">
+      <input type="hidden" name="mode" value="training">
       <div class="field-row">
-        <label>Departure (ICAO)
-          <input id="dep" name="dep" value="{{ form.dep }}" required maxlength="4"
+        <label>Airport (ICAO)
+          <input id="airport" name="airport" value="{{ form.airport }}" required maxlength="4"
                  class="mono upper" placeholder="CYVR" data-airport-ac>
-        </label>
-        <label>Arrival (ICAO)
-          <input id="arr" name="arr" value="{{ form.arr }}" required maxlength="4"
-                 class="mono upper" placeholder="CYYZ" data-airport-ac>
-        </label>
-      </div>
-      <div class="field-row">
-        <label>Charter flight number <span class="muted">({{ charter_min }}–{{ charter_max }})</span>
-          <div class="callsign-input">
-            <span class="callsign-prefix mono">WOC</span>
-            <input name="charter_number" value="{{ form.charter_number }}" inputmode="numeric"
-                   maxlength="4" class="mono" placeholder="9900" required>
-          </div>
         </label>
         <label>Flight date
           <input type="date" name="flight_date" value="{{ form.flight_date }}" required>
         </label>
       </div>
+      <p class="muted small">A local training flight departs and arrives at the
+        same airport.</p>
+      <label>Training flight number <span class="muted">({{ training_min }}–{{ training_max }})</span>
+        <div class="callsign-input">
+          <span class="callsign-prefix mono">WOC</span>
+          <input name="training_number" value="{{ form.training_number }}" inputmode="numeric"
+                 maxlength="4" class="mono" placeholder="9900" required>
+        </div>
+      </label>
       <div class="field">
         <span class="field-label">Aircraft <span class="muted">(required)</span></span>
         <div class="aircraft-readout" id="aircraft-readout">None selected</div>
         <span class="muted small">Pick the aircraft in the fleet list →
-          charters may use any active aircraft.</span>
+          training flights may use any active aircraft.</span>
       </div>
-      <label>Flight time <span class="muted">(auto-estimated)</span>
+      <label>Flight time
         <div class="time-row">
           <input id="hours" name="hours" value="{{ form.hours }}" inputmode="numeric"
                  placeholder="h" required>
@@ -51,11 +47,9 @@
                  placeholder="mm" required>
         </div>
       </label>
-      <p class="muted small" id="est-hint">Enter both airports and the flight
-        time is estimated for you — adjust it to what you actually flew.</p>
       <label>Remarks <span class="muted">(optional)</span>
         <input name="remarks" value="{{ form.remarks }}" maxlength="200"
-               placeholder="Smooth ride, diverted, go-around…">
+               placeholder="Circuits, stalls, touch-and-go…">
       </label>
       <button class="btn btn-primary" type="submit">File PIREP</button>
     </form>
@@ -66,9 +60,9 @@
     <h2>Aircraft</h2>
     {% if fleet %}
     <p class="muted small">Pick the one aircraft you flew — any active
-      airframe may fly a charter.</p>
+      airframe may fly a training session.</p>
     <div class="fleet-picker" id="fleet-picker">
-      {% set groups = [('pax', '✈ Passenger'), ('cargo', '📦 Cargo'), ('charter', '⭐ Charter')] %}
+      {% set groups = [('pax', '✈ Passenger'), ('cargo', '📦 Cargo')] %}
       {% for key, title in groups %}
       {% set items = fleet | selectattr('load_type', 'equalto', key) | list %}
       {% if items %}
@@ -77,7 +71,7 @@
         {% for a in items %}
         <label class="fleet-pick {{ 'selected' if form.aircraft_id == a.id|string }}">
           <input type="radio" class="fp-check" name="aircraft_id" value="{{ a.id }}"
-                 form="charter-form" data-icao="{{ a.icao_type }}" required
+                 form="training-form" data-icao="{{ a.icao_type }}" required
                  {{ 'checked' if form.aircraft_id == a.id|string }}>
           <span class="fp-reg mono">{{ a.registration }}</span>
           <span class="fp-detail">{{ a.detail }}{% if a.capacity %} · {{ a.capacity }}{% endif %}</span>
@@ -95,15 +89,9 @@
 
 <script>
 (function () {
-  var dep = document.getElementById('dep');
-  var arr = document.getElementById('arr');
   var picker = document.getElementById('fleet-picker');
   var readout = document.getElementById('aircraft-readout');
-  var hoursEl = document.getElementById('hours');
-  var minsEl = document.getElementById('minutes');
-  var hint = document.getElementById('est-hint');
-  var icaoOk = /^[A-Z][A-Z0-9]{3}$/;
-  if (!picker) return;
+  if (!picker || !readout) return;
 
   function radios() { return [].slice.call(picker.querySelectorAll('.fp-check')); }
   function chosen() { return radios().filter(function (r) { return r.checked; })[0] || null; }
@@ -118,65 +106,20 @@
       : 'None selected';
   }
 
-  // Track whether the time was typed by the pilot; only overwrite our own fill.
-  [hoursEl, minsEl].forEach(function (el) {
-    el.addEventListener('input', function () { el.dataset.auto = ''; });
-  });
-
-  function refresh() {
-    var d = dep.value.trim().toUpperCase();
-    var a = arr.value.trim().toUpperCase();
-    if (!icaoOk.test(d) || !icaoOk.test(a) || d === a) return;
-    var on = chosen();
-    var url = '/dispatch/estimate?dep=' + d + '&arr=' + a +
-              '&type=' + encodeURIComponent(on ? (on.dataset.icao || '') : '');
-    fetch(url).then(function (r) { return r.ok ? r.json() : {ok: false}; })
-      .then(function (j) {
-        if (!j.ok) {
-          hint.textContent = 'No estimate available for ' + d + ' → ' + a +
-            ' — enter the flight time manually.';
-          return;
-        }
-        var blank = !hoursEl.value && !minsEl.value;
-        if (blank || (hoursEl.dataset.auto === '1' && minsEl.dataset.auto === '1')) {
-          hoursEl.value = Math.floor(j.duration_min / 60);
-          minsEl.value = ('0' + (j.duration_min % 60)).slice(-2);
-          hoursEl.dataset.auto = '1';
-          minsEl.dataset.auto = '1';
-        }
-        hint.textContent = 'Estimated: ' + j.distance_nm + ' nm great-circle, ' +
-          j.duration_hmm + ' block' + (on ? ' for ' +
-          on.closest('.fleet-pick').querySelector('.fp-reg').textContent : '') +
-          '. Adjust to what you actually flew.';
-      })
-      .catch(function () { /* estimates are best-effort */ });
-  }
-
   picker.addEventListener('change', function (e) {
     if (!e.target.classList.contains('fp-check')) return;
     syncSelection();
-    refresh();
-  });
-
-  [dep, arr].forEach(function (el) {
-    el.addEventListener('change', refresh);
-    el.addEventListener('blur', refresh);
-    el.addEventListener('input', function () {
-      if (icaoOk.test(dep.value.trim().toUpperCase()) &&
-          icaoOk.test(arr.value.trim().toUpperCase())) refresh();
-    });
   });
 
   syncSelection();
-  refresh();
 })();
 </script>
 
 {% else %}{# scheduled: route locked from the dispatch list #}
 {% if not fleet %}
 <div class="card narrow-form">
-  <p class="muted">No approved aircraft for this route is currently active —
-    try again later or ask an administrator.</p>
+  <p class="muted">No eligible aircraft for this route is currently active —
+    try again later, or ask an administrator to add an in-range airframe.</p>
 </div>
 {% else %}
 <div class="two-col">
@@ -194,7 +137,7 @@
         <span class="field-label">Aircraft <span class="muted">(required)</span></span>
         <div class="aircraft-readout" id="aircraft-readout">None selected</div>
         <span class="muted small">Pick the aircraft in the fleet list →
-          only aircraft approved for this route are shown.</span>
+          only aircraft eligible for this route (type and range) are shown.</span>
       </div>
       <div class="field-row">
         <label>Flight date
@@ -220,10 +163,10 @@
 
   <div class="card">
     <h2>Aircraft</h2>
-    <p class="muted small">Pick the aircraft you flew — only airframes approved
+    <p class="muted small">Pick the aircraft you flew — only airframes eligible
       for this route are listed.</p>
     <div class="fleet-picker" id="fleet-picker">
-      {% set groups = [('pax', '✈ Passenger'), ('cargo', '📦 Cargo'), ('charter', '⭐ Charter')] %}
+      {% set groups = [('pax', '✈ Passenger'), ('cargo', '📦 Cargo')] %}
       {% for key, title in groups %}
       {% set items = fleet | selectattr('load_type', 'equalto', key) | list %}
       {% if items %}

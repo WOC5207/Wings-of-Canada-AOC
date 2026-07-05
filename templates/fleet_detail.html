@@ -38,9 +38,11 @@
       <div class="dl-row"><span class="muted">Type</span><span class="mono">{{ aircraft['icao_type'] }}</span></div>
       <div class="dl-row"><span class="muted">Variant</span><span>{{ aircraft['variant'] or '—' }}</span></div>
       <div class="dl-row"><span class="muted">Configuration</span>
-        <span class="badge load-{{ aircraft['load_type'] }}">{{ {'cargo': 'Cargo', 'charter': 'Charter'}.get(aircraft['load_type'], 'PAX') }}</span></div>
+        <span class="badge load-{{ aircraft['load_type'] }}">{{ 'Cargo' if aircraft['load_type'] == 'cargo' else 'PAX' }}</span></div>
       <div class="dl-row"><span class="muted">Capacity</span>
         <span class="mono">{% if aircraft['load_type'] == 'cargo' %}{{ '{:,}'.format(aircraft['cargo_capacity_kg']) }} kg{% else %}{{ aircraft['pax_capacity'] }} seats{% endif %}</span></div>
+      <div class="dl-row"><span class="muted">Range</span>
+        <span class="mono">{{ '{:,} nm'.format(aircraft['range_nm']) if aircraft['range_nm'] else '—' }}</span></div>
       <div class="dl-row"><span class="muted">Status</span>
         <span class="badge status-{{ aircraft['status'] }}">{{ aircraft['status'] }}</span></div>
       {% if aircraft['notes'] %}

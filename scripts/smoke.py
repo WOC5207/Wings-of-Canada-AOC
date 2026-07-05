@@ -47,55 +47,66 @@ status, page = call(admin, "/login")
 check("login page reachable", status == 200 and "Crew sign in" in page)
 
 status, page = call(admin, "/register", {
+    "first_name": "Chief", "last_name": "Pilot",
     "email": "chief@wingsofcanada.ca", "callsign_digits": "1",
     "password": "hunter2hunter2", "confirm": "hunter2hunter2",
 })
 check("first user registered as admin", "Administrator" in page and "WOC1" in page)
 
+
+def mint_invite():
+    """Mint a single-use invitation code (admin only) and return its value.
+    Sign-ups after the first user are invite-gated."""
+    _, page = call(admin, "/admin/invites/create", {})
+    m = re.search(r"WOC-[A-Z0-9]{4}-[A-Z0-9]{4}", page)
+    return m.group(0) if m else ""
+
 # --- fleet ----------------------------------------------------------------
+# A long-range passenger jet (id 1).
 status, page = call(admin, "/fleet/new", {
     "registration": "C-FWOC", "icao_type": "B38M", "variant": "737 MAX 8",
-    "load_type": "pax", "capacity": "178", "status": "active",
+    "load_type": "pax", "capacity": "178", "range_nm": "3000", "status": "active",
     "simbrief_url": "https://dispatch.simbrief.com/airframes/share/abc",
     "livery_url": "https://flightsim.to/file/123", "notes": "",
 })
 check("passenger aircraft added", "C-FWOC" in page and "B38M" in page)
 check("passenger capacity shown as seats", "178 seats" in page)
 
-# A freighter: capacity is entered in kg via the same single field.
+# A freighter: capacity is entered in kg via the same single field (id 2).
 status, page = call(admin, "/fleet/new", {
     "registration": "C-GENA", "icao_type": "B738", "variant": "737-800 BDSF",
-    "load_type": "cargo", "capacity": "20847", "status": "active",
+    "load_type": "cargo", "capacity": "20847", "range_nm": "3000", "status": "active",
     "simbrief_url": "", "livery_url": "", "notes": "",
 })
 check("cargo aircraft added", "C-GENA" in page and "Cargo" in page)
 check("cargo capacity shown in kg", "20,847 kg" in page)
 
-# A charter aircraft: a third category, capacity is seats like a PAX jet.
+# A short-range turboprop (id 3) — used to test range-based route eligibility.
 status, page = call(admin, "/fleet/new", {
-    "registration": "C-FCHT", "icao_type": "C25C", "variant": "Citation CJ4",
-    "load_type": "charter", "capacity": "8", "status": "active",
+    "registration": "C-FSML", "icao_type": "DH8D", "variant": "Dash 8 Q400",
+    "load_type": "pax", "capacity": "78", "range_nm": "800", "status": "active",
     "simbrief_url": "", "livery_url": "", "notes": "",
 })
-check("charter aircraft added", "C-FCHT" in page and "Charter" in page)
-check("charter capacity shown as seats", "8 seats" in page)
+check("short-range aircraft added", "C-FSML" in page and "DH8D" in page)
+check("aircraft range stored and shown on the detail page",
+      "3,000 nm" in call(admin, "/fleet/1")[1])
 
 # --- dispatch: numbering rules over HTTP (admin only) --------------------
-def new_route(dep, arr, create_return=True, aircraft=("C-FWOC",),
-              route_type="pax", dep_time="12:00"):
+def new_route(dep, arr, create_return=True, route_type="pax", dep_time="12:00",
+              distance="300", opener=None):
     """Create a route and return (page, outbound_number, return_number).
 
     Numbers are parsed from the "Route created: CW#### …" flash because the
-    allocator now picks a RANDOM free number in the series. `aircraft` is the
-    list of approved registrations an admin ticks for the route.
+    allocator now picks a RANDOM free number in the series. Eligible airframes
+    are derived from aircraft range vs the route distance — no manual picker.
     """
     h, m = dep_time.split(":") if dep_time else ("", "")
-    data = {"dep": dep, "arr": arr, "aircraft": list(aircraft),
+    data = {"dep": dep, "arr": arr,
             "route_type": route_type, "dep_time_h": h, "dep_time_m": m,
-            "distance_nm": "300", "duration": "1:10", "notes": ""}
+            "distance_nm": distance, "duration": "1:10", "notes": ""}
     if create_return:
         data["create_return"] = "on"
-    _, page = call(admin, "/dispatch/new", data)
+    _, page = call(opener or admin, "/dispatch/new", data)
     seg = re.search(r"Route created:[^<]*", page)
     nums = [int(x) for x in re.findall(r"CW(\d{4})", seg.group(0))] if seg else []
     out = nums[0] if nums else None
@@ -169,7 +180,7 @@ icaos = {r["icao"] for r in json.loads(page).get("results", [])}
 check("airport search matches by name", "EGLL" in icaos)
 
 _, page = call(admin, "/dispatch/new", {
-    "dep": "CYUL", "arr": "EGLL", "aircraft": "C-FWOC",
+    "dep": "CYUL", "arr": "EGLL",
     "dep_time_h": "12", "dep_time_m": "00",
     "distance_nm": "", "duration": "", "notes": "", "create_return": "on",
 })
@@ -181,44 +192,39 @@ check("route with blank fields still created (6xxx pair)",
 status, page = call(admin, f"/dispatch/?q=CW{blank_nums[0]:04d}")
 check("blank distance/time were auto-estimated", " nm" in page)
 
-status, page = call(admin, "/dispatch/new", {
-    "dep": "CYVR", "arr": "CYYZ", "aircraft": "ZZZZ",
-    "distance_nm": "", "duration": "", "notes": "",
-})
-check("unknown approved aircraft rejected", "from the fleet list" in page)
-
-# A passenger route can approve several passenger-class aircraft (pax + charter).
+# A short pax route (300 nm): every active passenger aircraft is in range, so
+# both the jet and the turboprop are eligible.
 page, multi_out, _ = new_route("CYWG", "CYQR", create_return=False,
-                               aircraft=("C-FWOC", "C-FCHT"), dep_time="18:50")
+                               dep_time="18:50", distance="300")
 status, page = call(admin, f"/dispatch/?q=CW{multi_out:04d}")
-check("route network lists the approved aircraft in a dropdown",
+check("short route lists every in-range passenger aircraft",
       'class="aircraft-select' in page
-      and "<option>C-FCHT C25C</option>" in page
+      and "<option>C-FSML DH8D</option>" in page
       and "<option>C-FWOC B38M</option>" in page)
 check("route network shows the scheduled departure time", "18:50" in page)
 check("SimBrief link carries the departure time (EOBT)",
       "deph=18&amp;depm=50" in page or "deph=18&depm=50" in page)
 check("admin sees the Added by column", "Added by" in page)
 
-# A cargo route accepts cargo aircraft and is badged Cargo.
+# A long pax route (2500 nm): the short-range turboprop drops out, leaving only
+# the long-range jet eligible.
+page, long_out, _ = new_route("CYVR", "CYHZ", create_return=False, distance="2500")
+status, page = call(admin, f"/dispatch/?q=CW{long_out:04d}")
+check("long route excludes out-of-range aircraft",
+      "<option>C-FWOC B38M</option>" in page
+      and "C-FSML" not in page)
+
+# A cargo route is eligible only for cargo aircraft, regardless of range.
 page, cargo_out, _ = new_route("CYYZ", "CYWG", create_return=False,
-                               aircraft=("C-GENA",), route_type="cargo")
+                               route_type="cargo")
 status, page = call(admin, f"/dispatch/?q=CW{cargo_out:04d}")
-check("cargo route created and badged", "C-GENA" in page and "Cargo" in page)
+check("cargo route created and badged", "Cargo" in page)
+check("cargo route lists only the cargo airframe",
+      "<option>C-GENA B738</option>" in page and "C-FWOC" not in page)
 
-# A passenger route may NOT approve a cargo aircraft (and vice versa).
+# A departure time is mandatory on a new route.
 _, page = call(admin, "/dispatch/new", {
-    "dep": "CYVR", "arr": "CYYC", "aircraft": "C-GENA", "route_type": "pax",
-    "dep_time_h": "09", "dep_time_m": "00",
-    "distance_nm": "300", "duration": "1:10", "notes": "",
-})
-check("cargo aircraft refused on a passenger route",
-      "passenger route can only approve passenger aircraft" in page
-      and "Route created" not in page)
-
-# Departure time and at least one approved aircraft are mandatory.
-_, page = call(admin, "/dispatch/new", {
-    "dep": "CYVR", "arr": "CYYC", "aircraft": "C-FWOC", "route_type": "pax",
+    "dep": "CYVR", "arr": "CYYC", "route_type": "pax",
     "dep_time_h": "", "dep_time_m": "",
     "distance_nm": "300", "duration": "1:10", "notes": "",
 })
@@ -227,20 +233,12 @@ check("missing departure time rejected",
 
 # An hour without a minute (one dropdown left on its placeholder) is incomplete.
 _, page = call(admin, "/dispatch/new", {
-    "dep": "CYVR", "arr": "CYYC", "aircraft": "C-FWOC", "route_type": "pax",
+    "dep": "CYVR", "arr": "CYYC", "route_type": "pax",
     "dep_time_h": "09", "dep_time_m": "",
     "distance_nm": "300", "duration": "1:10", "notes": "",
 })
 check("half-filled departure time rejected",
       "departure time is required" in page.lower() and "Route created" not in page)
-
-_, page = call(admin, "/dispatch/new", {
-    "dep": "CYVR", "arr": "CYYC", "route_type": "pax",
-    "dep_time_h": "09", "dep_time_m": "00",
-    "distance_nm": "300", "duration": "1:10", "notes": "",
-})
-check("missing approved aircraft rejected",
-      "at least one approved aircraft" in page and "Route created" not in page)
 
 # --- pirep ----------------------------------------------------------------
 status, page = call(admin, "/dispatch/")
@@ -251,10 +249,11 @@ check("route rows offer a Log flight button", "/pilots/log?route_id=" in page)
 status, page = call(admin, "/pilots/log?route_id=1")
 check("route row opens a locked scheduled log form",
       "Log a scheduled flight" in page and f"CW{r1_out:04d}" in page
-      and 'name="charter_number"' not in page)
+      and 'name="training_number"' not in page)
 
-# A scheduled route only offers its approved aircraft in the dropdown.
-check("locked log form lists only approved aircraft",
+# A scheduled route only offers its eligible aircraft (in-range, matching type).
+# Route 1 (CYYZ->KJFK, 300 nm pax) offers both pax tails but not the freighter.
+check("locked log form lists only eligible aircraft",
       "C-FWOC" in page and "C-GENA" not in page)
 
 # A bare /pilots/log has nothing to log: pilots are sent to the dispatch list.
@@ -262,20 +261,16 @@ status, page = call(admin, "/pilots/log")
 check("bare log page redirects to the route network",
       "Route network" in page and "Pick a scheduled flight" in page)
 
-# Dispatch form: the aircraft picker groups the fleet into the three categories.
+# The new-route form no longer carries a manual aircraft picker — eligibility is
+# automatic from aircraft range.
 status, page = call(admin, "/dispatch/new")
-check("dispatch picker groups fleet into PAX/Cargo/Charter",
-      "Passenger" in page and "Cargo" in page and "Charter" in page)
-check("dispatch picker lists each tail as a checkbox",
-      "C-FWOC" in page and "C-GENA" in page and "C-FCHT" in page
-      and 'type="checkbox"' in page)
-# The picker card sits outside the <form>, so every checkbox must be linked
-# back to it with form="route-form" or the selection is silently dropped.
-check("picker checkboxes are linked to the dispatch form",
+check("new-route form loads for admins",
       'id="route-form"' in page
-      and page.count('form="route-form"') == page.count('class="fp-check"'))
+      and "Eligible airframes are decided automatically" in page)
+check("new-route form has no manual aircraft picker",
+      'class="fp-check"' not in page)
 
-# Scheduled PIREP: route 1 (CYYZ->KJFK) approved only C-FWOC (aircraft id 1).
+# Scheduled PIREP: route 1 (CYYZ->KJFK) is pax; aircraft id 1 (C-FWOC) is eligible.
 status, page = call(admin, "/pilots/log", {
     "mode": "scheduled", "route_id": "1", "aircraft_id": "1",
     "flight_date": "2026-06-10", "hours": "1", "minutes": "25",
@@ -284,77 +279,83 @@ status, page = call(admin, "/pilots/log", {
 check("scheduled PIREP filed", "logged" in page and f"CW{r1_out:04d}" in page)
 check("profile shows 1:25", "1:25" in page)
 
-# An aircraft the admin did NOT approve for that route is refused.
+# The freighter (id 2, cargo) is not eligible for a passenger route and is refused.
 status, page = call(admin, "/pilots/log", {
     "mode": "scheduled", "route_id": "1", "aircraft_id": "2",
     "flight_date": "2026-06-10", "hours": "1", "minutes": "0", "remarks": "",
 })
-check("non-approved aircraft refused on a scheduled route",
-      "approved for this scheduled route" in page)
+check("ineligible aircraft refused on a scheduled route",
+      "eligible for this route" in page and "logged" not in page)
 
-# Charter PIREP: any aircraft, pilot-set number in the 9900-9999 block.
-# The "Dispatch charter" button on the route network pre-selects charter mode.
-status, page = call(admin, "/pilots/log?mode=charter")
-check("dispatch-charter link opens a charter-only form",
-      "Dispatch a charter" in page and 'name="charter_number"' in page
+# Local Training PIREP: same airport, any aircraft, pilot-set 9900-9999 number.
+# The "Dispatch local training" button on the route network pre-selects it.
+status, page = call(admin, "/pilots/log?mode=training")
+check("dispatch-training link opens a training-only form",
+      "Dispatch a local training flight" in page and 'name="training_number"' in page
       and 'name="route_id"' not in page)
 # The aircraft picker card sits outside the <form>; every radio must be
-# linked back with form="charter-form" or the selection is silently dropped.
-check("charter picker radios are linked to the charter form",
-      'id="charter-form"' in page
-      and page.count('form="charter-form"') == page.count('class="fp-check"'))
+# linked back with form="training-form" or the selection is silently dropped.
+check("training picker radios are linked to the training form",
+      'id="training-form"' in page
+      and page.count('form="training-form"') == page.count('class="fp-check"'))
 
+# A local training flight departs and arrives at the same airport.
 status, page = call(admin, "/pilots/log", {
-    "mode": "charter", "dep": "CYVR", "arr": "CYQQ", "charter_number": "9905",
+    "mode": "training", "airport": "CYVR", "training_number": "9905",
     "aircraft_id": "3", "flight_date": "2026-06-10", "hours": "0",
-    "minutes": "55", "remarks": "Ad-hoc charter",
+    "minutes": "55", "remarks": "Circuits",
 })
-check("charter PIREP filed with a 99xx number",
+check("training PIREP filed with a 99xx number",
       "logged" in page and "CW9905" in page)
+check("training flight is a local same-airport session",
+      "CYVR → CYVR" in page)
 
-# 9900 is the new lower boundary of the charter block (used to be scheduled).
+# 9900 is the lower boundary of the training block (used to be scheduled).
 status, page = call(admin, "/pilots/log", {
-    "mode": "charter", "dep": "CYVR", "arr": "CYQQ", "charter_number": "9900",
+    "mode": "training", "airport": "CYYC", "training_number": "9900",
     "aircraft_id": "3", "flight_date": "2026-06-11", "hours": "1",
-    "minutes": "5", "remarks": "Boundary charter",
+    "minutes": "5", "remarks": "Boundary training",
 })
-check("charter number 9900 accepted", "logged" in page and "CW9900" in page)
+check("training number 9900 accepted", "logged" in page and "CW9900" in page)
 
-# A charter number outside the reserved block is rejected.
+# A training number outside the reserved block is rejected.
 status, page = call(admin, "/pilots/log", {
-    "mode": "charter", "dep": "CYVR", "arr": "CYQQ", "charter_number": "8000",
+    "mode": "training", "airport": "CYVR", "training_number": "8000",
     "aircraft_id": "3", "flight_date": "2026-06-10", "hours": "1",
     "minutes": "0", "remarks": "",
 })
-check("charter number outside 9900-9999 rejected",
+check("training number outside 9900-9999 rejected",
       "must be between 9900 and 9999" in page)
 
 # --- second user joins as a Standard member --------------------------------
 member = client()
 status, page = call(member, "/register", {
+    "first_name": "Rookie", "last_name": "Pilot",
     "email": "rookie@wingsofcanada.ca", "callsign_digits": "0042",
+    "invite": mint_invite(),
     "password": "hunter2hunter2", "confirm": "hunter2hunter2",
 })
 check("second user joins on the Standard tier",
       "WOC0042" in page and "You can now fly the network" in page)
 
-# Creating scheduled routes is now admin-only: a standard pilot is refused.
+# Standard pilots can now create routes.
 status, page = call(member, "/dispatch/new", {
-    "dep": "CYEG", "arr": "KSEA", "aircraft": "C-FWOC",
+    "dep": "CYEG", "arr": "KSEA", "route_type": "pax",
+    "dep_time_h": "08", "dep_time_m": "30",
     "distance_nm": "", "duration": "", "notes": "", "create_return": "on",
 })
-check("standard member cannot create routes",
-      "requires Administrator access" in page and "Route created" not in page)
+check("standard member can create routes",
+      "Route created" in page and "requires Administrator access" not in page)
 
 status, page = call(member, "/dispatch/")
 check("standard member does not see the Added by column",
       "Added by" not in page)
-check("standard member has no New route button on dispatch",
-      "+ New route" not in page)
+check("standard member sees the New route button on dispatch",
+      "+ New route" in page)
 
 status, page = call(member, "/dashboard")
-check("standard member has no New route button on the dashboard",
-      "+ New route" not in page and "Fly the network" in page)
+check("standard member sees the New route button on the dashboard",
+      "+ New route" in page and "Fly the network" in page)
 
 # Dashboard now leads with latest flights + a top-pilots board + fleet status,
 # and no longer shows the Latest routes panel.
@@ -369,49 +370,119 @@ check("dashboard latest-flights feed is scrollable", 'class="flights-scroll"' in
 status, page = call(member, "/admin/users")
 check("standard member cannot open admin", "requires Administrator access" in page)
 
-# Route 2 (the return leg of CYYZ->KJFK) was approved for C-FWOC (aircraft 1).
+# Route 2 (the return leg of CYYZ->KJFK) is pax; C-FWOC (aircraft 1) is eligible.
 status, page = call(member, "/pilots/log", {
     "mode": "scheduled", "route_id": "2", "aircraft_id": "1",
     "flight_date": "2026-06-10", "hours": "1", "minutes": "30", "remarks": "",
 })
 check("member can log scheduled flights", "logged" in page)
 
-# A standard pilot can also file their own charter.
+# A standard pilot can also file their own local training flight (any aircraft).
 status, page = call(member, "/pilots/log", {
-    "mode": "charter", "dep": "CYYC", "arr": "CYVR", "charter_number": "9912",
+    "mode": "training", "airport": "CYYC", "training_number": "9912",
     "aircraft_id": "2", "flight_date": "2026-06-10", "hours": "1",
-    "minutes": "5", "remarks": "Pilot charter",
+    "minutes": "5", "remarks": "Pilot training",
 })
-check("member can file a charter flight", "logged" in page and "CW9912" in page)
+check("member can file a local training flight", "logged" in page and "CW9912" in page)
 
 # --- admin: edit an existing route's dispatch details ------------------------
-# Route 1 is the CYYZ->KJFK outbound, approved for C-FWOC.
+# Route 1 is the CYYZ->KJFK outbound. Editing is admin-only.
 status, page = call(admin, "/dispatch/1/edit")
 check("admin can open the route edit form",
       "Edit route" in page and "readonly" in page and "CYYZ" in page)
-check("edit form preselects the current approved aircraft", "C-FWOC" in page)
 
 status, page = call(member, "/dispatch/1/edit")
 check("standard member cannot edit routes",
       "requires Administrator access" in page)
 
-# Switching a route to cargo cannot keep a passenger aircraft approved.
+# Valid edit: set a departure time, change the type and the notes.
 status, page = call(admin, "/dispatch/1/edit", {
-    "route_type": "cargo", "aircraft": ["C-FWOC"],
-    "dep_time_h": "", "dep_time_m": "", "distance_nm": "", "duration": "", "notes": "",
-})
-check("editing a route to cargo rejects passenger aircraft",
-      "can only approve cargo" in page)
-
-# Valid edit: set a departure time and broaden the approved aircraft.
-status, page = call(admin, "/dispatch/1/edit", {
-    "route_type": "pax", "aircraft": ["C-FWOC", "C-FCHT"],
+    "route_type": "pax",
     "dep_time_h": "09", "dep_time_m": "15",
     "distance_nm": "", "duration": "", "notes": "Edited by smoke",
 })
 check("admin edit saves the route", "updated" in page)
 check("edited route shows the new departure time", "09:15" in page)
-check("edited route shows the newly approved aircraft", "C-FCHT" in page)
+
+# --- route network: admin filters + everyone can sort -----------------------
+# Filter by the pilot who added the route: only the member's CYEG<->KSEA pair
+# (member is user 2; the admin created everything else).
+status, page = call(admin, "/dispatch/?creator=2")
+check("admin can filter routes by creator",
+      "CYEG → KSEA" in page and "CYYZ → KJFK" not in page)
+
+# Filter by departure airport.
+status, page = call(admin, "/dispatch/?dep=CYVR")
+check("admin can filter routes by departure airport",
+      "CYVR →" in page and "KJFK → CYYZ" not in page)
+
+# Filter by a distance range that the long 2500 nm route satisfies.
+status, page = call(admin, "/dispatch/?dist_min=2000")
+check("admin can filter routes by distance range", f"CW{long_out:04d}" in page)
+
+# The structured filter panel is admin-only.
+status, page = call(admin, "/dispatch/")
+check("admin sees the route filter panel", 'name="dist_min"' in page)
+status, page = call(member, "/dispatch/")
+check("standard member does not see the filter panel",
+      'name="dist_min"' not in page and "Added by" not in page)
+
+# Sorting is open to everyone — a standard member can sort by distance.
+status, page = call(member, "/dispatch/?sort=distance&dir=desc")
+check("any pilot can sort the route network",
+      status == 200 and 'class="sort-btn active' in page)
+
+# --- route network: admin multi-select + bulk delete -------------------------
+status, page = call(admin, "/dispatch/")
+check("admin sees the selection column and Select all",
+      'class="bulk-check"' in page and "Select all" in page
+      and 'id="bulk-form"' in page)
+# Every row checkbox must link back to the bulk form (it sits outside the table).
+check("selection checkboxes are linked to the bulk form",
+      page.count('form="bulk-form"') == page.count('class="bulk-check"'))
+status, page = call(member, "/dispatch/")
+check("standard member has no selection column",
+      'class="bulk-check"' not in page and 'id="bulk-form"' not in page)
+
+# Create two throwaway routes and bulk-delete them in one submission.
+_, bulk_a, _ = new_route("CYQB", "CYOW", create_return=False)
+_, bulk_b, _ = new_route("CYXE", "CYQR", create_return=False)
+listing = call(admin, "/dispatch/")[1]
+bulk_ids = []
+for n in (bulk_a, bulk_b):
+    row = next(r for r in listing.split("<tr") if f"CW{n:04d}" in r)
+    bulk_ids.append(re.search(r"/dispatch/(\d+)/delete", row).group(1))
+status, page = call(admin, "/dispatch/bulk-delete", {"route_ids": bulk_ids})
+check("bulk delete removes every selected route",
+      "Deleted 2 routes" in page
+      and f"CW{bulk_a:04d}" not in page and f"CW{bulk_b:04d}" not in page)
+
+status, page = call(admin, "/dispatch/bulk-delete", {})
+check("bulk delete with nothing selected is rejected",
+      "at least one route" in page)
+
+status, page = call(member, "/dispatch/bulk-delete", {"route_ids": ["1"]})
+check("standard member cannot bulk delete routes",
+      "requires Administrator access" in page)
+
+# --- flights tab: completed flights with smartCARS data ----------------------
+status, page = call(admin, "/flights/")
+check("flights tab lists completed flights",
+      "Completed flights" in page and f"CW{r1_out:04d}" in page
+      and "CW9905" in page)
+# Manual logs carry no ACARS data — the smartCARS columns stay empty.
+check("manual flights show no smartCARS data", "Manual" in page and "—" in page)
+
+# The first PIREP (id 1) was logged manually: detail page shows the empty state.
+status, page = call(admin, "/flights/1")
+check("flight detail page loads",
+      f"CW{r1_out:04d}" in page and "Flight log" in page)
+check("manual flight detail shows the no-data empty states",
+      "No smartCARS data was recorded" in page
+      and "No in-flight telemetry" in page)
+
+status, page = call(admin, "/flights/999999")
+check("unknown flight redirects to the list", "Flight not found" in page)
 
 # --- fleet: detail page and aircraft images ---------------------------------
 status, page = call(admin, "/fleet/")
@@ -561,13 +632,17 @@ check("admin can edit the cover headings", "Landing headings updated" in page)
 # --- duplicate registration guards -----------------------------------------
 rogue = client()
 status, page = call(rogue, "/register", {
+    "first_name": "Rogue", "last_name": "One",
     "email": "chief@wingsofcanada.ca", "callsign_digits": "9999",
+    "invite": mint_invite(),
     "password": "hunter2hunter2", "confirm": "hunter2hunter2",
 })
 check("duplicate email rejected", "already registered" in page)
 
 status, page = call(rogue, "/register", {
+    "first_name": "Rogue", "last_name": "Two",
     "email": "other@wingsofcanada.ca", "callsign_digits": "0042",
+    "invite": mint_invite(),
     "password": "hunter2hunter2", "confirm": "hunter2hunter2",
 })
 check("duplicate callsign rejected", "already taken" in page)
@@ -591,6 +666,9 @@ check("member pages still require sign-in", "Crew sign in" in page)
 
 status, page = call(anon, "/fleet/")
 check("fleet page still requires sign-in", "Crew sign in" in page)
+
+status, page = call(anon, "/flights/")
+check("flights page requires sign-in", "Crew sign in" in page)
 
 print()
 if FAILED:

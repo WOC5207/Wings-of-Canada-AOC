@@ -15,16 +15,16 @@ bp = Blueprint("dispatch", __name__, url_prefix="/dispatch")
 ICAO_RE = re.compile(r"^[A-Z][A-Z0-9]{3}$")
 
 
-def _route_view(row, approved):
+def _route_view(row, eligible):
     """Add display fields to a routes row.
 
-    `approved` is the list of aircraft registrations an administrator approved
-    for this scheduled route (empty means any active aircraft may fly it).
+    `eligible` is the list of active aircraft (``"REGISTRATION TYPE"``) whose
+    load type matches the route and whose range reaches the route distance.
     """
     r = dict(row)
     r["flight_no"] = flight_no(row["number"])
     r["callsign"] = callsign(row["number"])
-    r["approved"] = approved
+    r["eligible"] = eligible
     r["simbrief_url"] = (
         "https://dispatch.simbrief.com/options/custom"
         f"?airline=WOC&fltnum={row['number']}"
@@ -38,82 +38,121 @@ def _route_view(row, approved):
     return r
 
 
-def _approved_by_route(db, route_ids):
-    """Map route id -> list of approved aircraft, "REGISTRATION TYPE" each."""
-    if not route_ids:
-        return {}
-    marks = ",".join("?" * len(route_ids))
+def eligible_aircraft_ids(db, route_type, distance_nm):
+    """Active aircraft ids eligible for a route: the load type matches the
+    route's pax/cargo type and the aircraft has enough range. range_nm == 0
+    means "not set" and places no range limit. A NULL distance is treated as 0
+    (no restriction)."""
+    dist = distance_nm or 0
     rows = db.execute(
-        f"""SELECT ra.route_id, a.registration, a.icao_type FROM route_aircraft ra
-            JOIN aircraft a ON a.id = ra.aircraft_id
-            WHERE ra.route_id IN ({marks})
-            ORDER BY a.registration""",
-        list(route_ids),
+        """SELECT id FROM aircraft
+           WHERE status = 'active' AND load_type = ?
+             AND (range_nm = 0 OR range_nm >= ?)""",
+        (route_type, dist),
+    ).fetchall()
+    return [r["id"] for r in rows]
+
+
+def _eligible_by_route(db, rows):
+    """Map route id -> list of eligible aircraft ("REGISTRATION TYPE" each),
+    computed from each route's pax/cargo type and distance vs aircraft range."""
+    fleet = db.execute(
+        """SELECT registration, icao_type, load_type, range_nm FROM aircraft
+           WHERE status = 'active' ORDER BY registration"""
     ).fetchall()
     out = {}
     for r in rows:
-        out.setdefault(r["route_id"], []).append(
-            f"{r['registration']} {r['icao_type']}"
-        )
+        dist = r["distance_nm"] or 0
+        out[r["id"]] = [
+            f"{a['registration']} {a['icao_type']}"
+            for a in fleet
+            if a["load_type"] == r["route_type"]
+            and (a["range_nm"] == 0 or a["range_nm"] >= dist)
+        ]
     return out
+
+
+# Sortable columns (open to everyone). The callsign is "WOC" + the zero-padded
+# number, so sorting by number matches sorting by callsign. NULLIF pushes routes
+# with no departure time to the end (the empty string becomes NULL).
+_ROUTE_SORTS = {
+    "callsign": "r.number",
+    "distance": "r.distance_nm",
+    "dep_time": "NULLIF(r.dep_time, '')",
+    "block": "r.duration_min",
+}
 
 
 @bp.route("/")
 @login_required
 def routes():
-    q = request.args.get("q", "").strip().upper()
     db = get_db()
+    is_admin = g.user["role"] == "admin"
+
+    q = request.args.get("q", "").strip().upper()
+
+    # Sorting is available to everyone; a bad value falls back to callsign asc.
+    sort = request.args.get("sort", "callsign")
+    if sort not in _ROUTE_SORTS:
+        sort = "callsign"
+    direction = "desc" if request.args.get("dir") == "desc" else "asc"
+    order_dir = "DESC" if direction == "desc" else "ASC"
+
+    where, params = [], []
     if q:
-        rows = db.execute(
-            """SELECT r.*, u.callsign AS creator FROM routes r
-               LEFT JOIN users u ON u.id = r.created_by
-               WHERE r.dep_icao LIKE ? OR r.arr_icao LIKE ?
-                  OR ('CW' || printf('%04d', r.number)) LIKE ?
-                  OR r.aircraft_type LIKE ?
-                  OR EXISTS (SELECT 1 FROM route_aircraft ra
-                             JOIN aircraft a ON a.id = ra.aircraft_id
-                             WHERE ra.route_id = r.id AND a.registration LIKE ?)
-               ORDER BY r.number""",
-            (f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"),
-        ).fetchall()
-    else:
-        rows = db.execute(
-            """SELECT r.*, u.callsign AS creator FROM routes r
-               LEFT JOIN users u ON u.id = r.created_by
-               ORDER BY r.number"""
-        ).fetchall()
-    approved = _approved_by_route(db, [r["id"] for r in rows])
-    routes_view = [_route_view(r, approved.get(r["id"], [])) for r in rows]
-    return render_template("routes.html", routes=routes_view, q=q)
+        where.append("(r.dep_icao LIKE ? OR r.arr_icao LIKE ? "
+                     "OR ('CW' || printf('%04d', r.number)) LIKE ? "
+                     "OR r.aircraft_type LIKE ?)")
+        params += [f"%{q}%"] * 4
 
+    # Structured filters are admin-only: departure / arrival airport, a distance
+    # range, and the pilot who created the route.
+    dep = arr = dist_min = dist_max = creator_id = ""
+    if is_admin:
+        dep = request.args.get("dep", "").strip().upper()
+        arr = request.args.get("arr", "").strip().upper()
+        dist_min = request.args.get("dist_min", "").strip()
+        dist_max = request.args.get("dist_max", "").strip()
+        creator_id = request.args.get("creator", "").strip()
+        if dep:
+            where.append("r.dep_icao LIKE ?")
+            params.append(f"%{dep}%")
+        if arr:
+            where.append("r.arr_icao LIKE ?")
+            params.append(f"%{arr}%")
+        if dist_min.isdigit():
+            where.append("r.distance_nm >= ?")
+            params.append(int(dist_min))
+        if dist_max.isdigit():
+            where.append("r.distance_nm <= ?")
+            params.append(int(dist_max))
+        if creator_id.isdigit():
+            where.append("r.created_by = ?")
+            params.append(int(creator_id))
 
-def _fleet_options(db):
-    """Active fleet, one option per airframe, for the aircraft picker.
+    col = _ROUTE_SORTS[sort]
+    sql = ("SELECT r.*, u.callsign AS creator FROM routes r "
+           "LEFT JOIN users u ON u.id = r.created_by")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += f" ORDER BY {col} IS NULL, {col} {order_dir}, r.number"
 
-    Each option carries its load_type (pax / cargo / charter) so the dispatch
-    form can group the tails into categories, plus a formatted capacity.
-    """
-    rows = db.execute(
-        """SELECT registration, icao_type, variant, load_type,
-                  pax_capacity, cargo_capacity_kg FROM aircraft
-           WHERE status = 'active' ORDER BY registration"""
-    ).fetchall()
-    options = []
-    for r in rows:
-        detail = r["variant"] or r["icao_type"]
-        if r["load_type"] == "cargo":
-            capacity = f"{r['cargo_capacity_kg']:,} kg" if r["cargo_capacity_kg"] else ""
-        else:
-            capacity = f"{r['pax_capacity']} seats" if r["pax_capacity"] else ""
-        options.append({
-            "value": r["registration"],
-            "label": f"{r['registration']} — {detail}" if detail else r["registration"],
-            "detail": detail,
-            "icao_type": r["icao_type"],
-            "load_type": r["load_type"],
-            "capacity": capacity,
-        })
-    return options
+    rows = db.execute(sql, params).fetchall()
+    eligible = _eligible_by_route(db, rows)
+    routes_view = [_route_view(r, eligible.get(r["id"], [])) for r in rows]
+
+    # Pilots who have created at least one route, for the "Added by" filter.
+    creators = db.execute(
+        """SELECT DISTINCT u.id, u.callsign FROM users u
+           JOIN routes r ON r.created_by = u.id
+           ORDER BY u.callsign"""
+    ).fetchall() if is_admin else []
+
+    return render_template(
+        "routes.html", routes=routes_view, q=q, sort=sort, dir=direction,
+        is_admin=is_admin, dep=dep, arr=arr, dist_min=dist_min,
+        dist_max=dist_max, creator_id=creator_id, creators=creators,
+    )
 
 
 @bp.route("/airports")
@@ -145,15 +184,13 @@ def estimate_route():
 
 
 @bp.route("/new", methods=("GET", "POST"))
-@role_required("admin")
+@role_required("standard")
 def new_route():
     db = get_db()
-    fleet_options = _fleet_options(db)
 
     # Default the return checkbox on for a fresh form; reflect the submitted
     # value on POST (an unchecked box is simply absent from the form data).
     create_return = (request.method != "POST") or ("create_return" in request.form)
-    selected = [a.strip().upper() for a in request.form.getlist("aircraft") if a.strip()]
     route_type = request.form.get("route_type", "pax")
     if route_type not in ("pax", "cargo"):
         route_type = "pax"
@@ -165,7 +202,6 @@ def new_route():
     form = {
         "dep": request.form.get("dep", "").strip().upper(),
         "arr": request.form.get("arr", "").strip().upper(),
-        "aircraft": selected,
         "route_type": route_type,
         "dep_time": dep_time,
         "dep_time_h": dep_h,
@@ -176,15 +212,6 @@ def new_route():
         "create_return": create_return,
     }
 
-    # Resolve the approved airframes (by registration) to their fleet records.
-    by_reg = {o["value"]: o for o in fleet_options}
-    chosen = [by_reg[reg] for reg in selected if reg in by_reg]
-    # The first approved aircraft's ICAO type drives estimates / the SimBrief link.
-    aircraft_icao = chosen[0]["icao_type"] if chosen else ""
-    # A cargo route may only use cargo aircraft; a passenger route may use
-    # passenger or charter aircraft (charter airframes carry passengers).
-    allowed_loads = {"cargo"} if route_type == "cargo" else {"pax", "charter"}
-
     if request.method == "POST":
         errors = []
         if not ICAO_RE.match(form["dep"]):
@@ -193,13 +220,6 @@ def new_route():
             errors.append("Arrival must be a 4-character ICAO code, e.g. CYYZ.")
         if form["dep"] and form["dep"] == form["arr"]:
             errors.append("Departure and arrival cannot be the same airport.")
-        if not selected:
-            errors.append("Select at least one approved aircraft for the route.")
-        elif any(reg not in by_reg for reg in selected):
-            errors.append("Pick approved aircraft from the fleet list.")
-        elif any(o["load_type"] not in allowed_loads for o in chosen):
-            kind = "cargo" if route_type == "cargo" else "passenger"
-            errors.append(f"A {kind} route can only approve {kind} aircraft.")
 
         if not form["dep_time"]:
             errors.append("A departure time is required.")
@@ -221,9 +241,10 @@ def new_route():
             else:
                 errors.append("Block time must look like H:MM, e.g. 4:35.")
 
-        # Fill in anything the pilot left blank with the route estimate.
+        # Fill in anything the pilot left blank with the route estimate. Without
+        # a hand-picked airframe the block time uses a generic cruise speed.
         if not errors and (distance is None or duration is None):
-            est = estimate(form["dep"], form["arr"], aircraft_icao)
+            est = estimate(form["dep"], form["arr"])
             if est is not None:
                 if distance is None:
                     distance = est["distance_nm"]
@@ -247,31 +268,17 @@ def new_route():
                 errors.append(str(exc))
             else:
                 pair_id = uuid.uuid4().hex
-                # Resolve the approved registrations to aircraft ids once.
-                approved_ids = [
-                    row["id"] for row in db.execute(
-                        f"""SELECT id FROM aircraft WHERE registration IN
-                            ({','.join('?' * len(selected))})""",
-                        selected,
-                    ).fetchall()
-                ] if selected else []
-                for leg, number, dep, arr, dep_time in legs:
-                    cur = db.execute(
+                for leg, number, dep, arr, leg_dep_time in legs:
+                    db.execute(
                         """INSERT INTO routes
                            (pair_id, leg, number, dep_icao, arr_icao, aircraft_type,
                             route_type, dep_time, distance_nm, duration_min, notes,
                             created_by)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (pair_id, leg, number, dep, arr, aircraft_icao,
-                         route_type, dep_time, distance, duration, form["notes"],
+                           VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)""",
+                        (pair_id, leg, number, dep, arr,
+                         route_type, leg_dep_time, distance, duration, form["notes"],
                          g.user["id"]),
                     )
-                    rid = cur.lastrowid
-                    for aid in approved_ids:
-                        db.execute(
-                            "INSERT INTO route_aircraft (route_id, aircraft_id) VALUES (?, ?)",
-                            (rid, aid),
-                        )
                 db.commit()
                 if create_return:
                     flash(
@@ -292,26 +299,23 @@ def new_route():
         for e in errors:
             flash(e, "error")
 
-    return render_template("route_new.html", form=form, fleet_options=fleet_options)
+    return render_template("route_new.html", form=form)
 
 
 @bp.route("/<int:route_id>/edit", methods=("GET", "POST"))
 @role_required("admin")
 def edit_route(route_id):
-    """Edit an existing route's dispatch details: approved aircraft, PAX/cargo,
-    departure time, distance/block time and notes. The departure, arrival and
-    flight number are fixed (they define the route and its number)."""
+    """Edit an existing route's dispatch details: PAX/cargo, departure time,
+    distance/block time and notes. Departure, arrival and the flight number are
+    fixed. Eligible airframes are computed from aircraft range vs the route
+    distance, so there is no manual aircraft list."""
     db = get_db()
     route = db.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
     if route is None:
         flash("Route not found.", "error")
         return redirect(url_for("dispatch.routes"))
 
-    fleet_options = _fleet_options(db)
-    by_reg = {o["value"]: o for o in fleet_options}
-
     if request.method == "POST":
-        selected = [a.strip().upper() for a in request.form.getlist("aircraft") if a.strip()]
         route_type = request.form.get("route_type", "pax")
         if route_type not in ("pax", "cargo"):
             route_type = "pax"
@@ -320,22 +324,17 @@ def edit_route(route_id):
         dep_time = f"{dep_h}:{dep_m}" if dep_h and dep_m else ""
         form = {
             "dep": route["dep_icao"], "arr": route["arr_icao"],
-            "aircraft": selected, "route_type": route_type,
+            "route_type": route_type,
             "dep_time": dep_time, "dep_time_h": dep_h, "dep_time_m": dep_m,
             "distance_nm": request.form.get("distance_nm", "").strip(),
             "duration": request.form.get("duration", "").strip(),
             "notes": request.form.get("notes", "").strip(),
         }
     else:
-        approved_now = [r["registration"].upper() for r in db.execute(
-            """SELECT a.registration FROM route_aircraft ra
-               JOIN aircraft a ON a.id = ra.aircraft_id
-               WHERE ra.route_id = ? ORDER BY a.registration""", (route_id,)
-        ).fetchall()]
         cur_h, _, cur_m = (route["dep_time"] or "").partition(":")
         form = {
             "dep": route["dep_icao"], "arr": route["arr_icao"],
-            "aircraft": approved_now, "route_type": route["route_type"],
+            "route_type": route["route_type"],
             "dep_time": route["dep_time"], "dep_time_h": cur_h, "dep_time_m": cur_m,
             "distance_nm": str(route["distance_nm"] or ""),
             "duration": (f"{route['duration_min'] // 60}:{route['duration_min'] % 60:02d}"
@@ -343,22 +342,8 @@ def edit_route(route_id):
             "notes": route["notes"],
         }
 
-    chosen = [by_reg[reg] for reg in form["aircraft"] if reg in by_reg]
-    # Keep the existing type if (somehow) nothing is selected on render.
-    aircraft_icao = chosen[0]["icao_type"] if chosen else route["aircraft_type"]
-    allowed_loads = {"cargo"} if form["route_type"] == "cargo" else {"pax", "charter"}
-
     if request.method == "POST":
         errors = []
-        selected = form["aircraft"]
-        if not selected:
-            errors.append("Select at least one approved aircraft for the route.")
-        elif any(reg not in by_reg for reg in selected):
-            errors.append("Pick approved aircraft from the fleet list.")
-        elif any(o["load_type"] not in allowed_loads for o in chosen):
-            kind = "cargo" if form["route_type"] == "cargo" else "passenger"
-            errors.append(f"A {kind} route can only approve {kind} aircraft.")
-
         # Departure time is optional when editing, but must be complete & valid.
         if (form["dep_time_h"] and not form["dep_time_m"]) or \
            (form["dep_time_m"] and not form["dep_time_h"]):
@@ -383,7 +368,7 @@ def edit_route(route_id):
 
         # Fill anything left blank with a fresh great-circle estimate.
         if not errors and (distance is None or duration is None):
-            est = estimate(route["dep_icao"], route["arr_icao"], aircraft_icao)
+            est = estimate(route["dep_icao"], route["arr_icao"])
             if est is not None:
                 if distance is None:
                     distance = est["distance_nm"]
@@ -392,21 +377,11 @@ def edit_route(route_id):
 
         if not errors:
             db.execute(
-                """UPDATE routes SET aircraft_type = ?, route_type = ?, dep_time = ?,
+                """UPDATE routes SET route_type = ?, dep_time = ?,
                        distance_nm = ?, duration_min = ?, notes = ? WHERE id = ?""",
-                (aircraft_icao, form["route_type"], form["dep_time"], distance,
+                (form["route_type"], form["dep_time"], distance,
                  duration, form["notes"], route_id),
             )
-            approved_ids = [row["id"] for row in db.execute(
-                f"""SELECT id FROM aircraft WHERE registration IN
-                    ({','.join('?' * len(selected))})""", selected,
-            ).fetchall()] if selected else []
-            db.execute("DELETE FROM route_aircraft WHERE route_id = ?", (route_id,))
-            for aid in approved_ids:
-                db.execute(
-                    "INSERT INTO route_aircraft (route_id, aircraft_id) VALUES (?, ?)",
-                    (route_id, aid),
-                )
             db.commit()
             flash(f"Route {flight_no(route['number'])} {route['dep_icao']} → "
                   f"{route['arr_icao']} updated.", "success")
@@ -420,8 +395,7 @@ def edit_route(route_id):
         "dep_icao": route["dep_icao"], "arr_icao": route["arr_icao"],
     }
     return render_template(
-        "route_new.html", form=form, fleet_options=fleet_options,
-        edit=True, route=route_view,
+        "route_new.html", form=form, edit=True, route=route_view,
     )
 
 
@@ -438,4 +412,24 @@ def delete_route(route_id):
         db.commit()
         flash(f"Route {flight_no(row['number'])} "
               f"{row['dep_icao']} → {row['arr_icao']} was deleted.", "success")
+    return redirect(url_for("dispatch.routes"))
+
+
+@bp.route("/bulk-delete", methods=("POST",))
+@role_required("admin")
+def bulk_delete_routes():
+    """Delete every route ticked in the route network's selection column."""
+    db = get_db()
+    ids = [int(x) for x in request.form.getlist("route_ids") if x.isdigit()]
+    deleted = 0
+    if ids:
+        marks = ",".join("?" * len(ids))
+        deleted = db.execute(
+            f"DELETE FROM routes WHERE id IN ({marks})", ids
+        ).rowcount
+        db.commit()
+    if deleted:
+        flash(f"Deleted {deleted} route{'s' if deleted != 1 else ''}.", "success")
+    else:
+        flash("Select at least one route to delete.", "error")
     return redirect(url_for("dispatch.routes"))

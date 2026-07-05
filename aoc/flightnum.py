@@ -46,11 +46,11 @@ TORONTO = "CYYZ"
 # ICAO prefixes covering the USA and its territories.
 US_PREFIXES = ("K", "PA", "PF", "PO", "PP", "PH", "PG", "PJ", "PM", "PW", "TJ", "TI")
 
-# Charter flights are filed ad-hoc by pilots and ignore every rule above: the
-# pilot picks any aircraft and any number in this reserved block. Scheduled
+# Local Training flights are filed ad-hoc by pilots: a same-airport local
+# session with any aircraft and any number in this reserved block. Scheduled
 # "rest of world" (9xxx) numbers stop at 9899 so the two never collide.
-CHARTER_MIN = 9900
-CHARTER_MAX = 9999
+TRAINING_MIN = 9900
+TRAINING_MAX = 9999
 
 
 class SeriesFullError(Exception):
@@ -102,16 +102,16 @@ def series_range(digit: int) -> range:
     """The block of numbers owned by a series.
 
     The 9xxx "rest of world" series stops at 9899 because 9900-9999 is reserved
-    for pilot-filed charter flights.
+    for pilot-filed Local Training flights.
     """
     if digit == 9:
-        return range(9000, CHARTER_MIN)
+        return range(9000, TRAINING_MIN)
     return range(digit * 1000, digit * 1000 + 1000)
 
 
-def is_charter_number(n: int) -> bool:
-    """True if n falls in the reserved charter block (9900-9999)."""
-    return CHARTER_MIN <= n <= CHARTER_MAX
+def is_training_number(n: int) -> bool:
+    """True if n falls in the reserved Local Training block (9900-9999)."""
+    return TRAINING_MIN <= n <= TRAINING_MAX
 
 
 def allocate_one(dep: str, arr: str, used: set[int], rng=_random) -> int:

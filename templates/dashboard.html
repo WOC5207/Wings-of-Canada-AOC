@@ -10,9 +10,7 @@
 <div class="page-head">
   <h1>Operations dashboard</h1>
   <div class="actions">
-    {% if g.user['role'] == 'admin' %}
     <a class="btn btn-primary" href="{{ url_for('dispatch.new_route') }}">+ New route</a>
-    {% endif %}
     <a class="btn" href="{{ url_for('dispatch.routes') }}">Fly the network</a>
   </div>
 </div>

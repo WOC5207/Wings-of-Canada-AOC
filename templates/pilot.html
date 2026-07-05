@@ -28,7 +28,8 @@
       {% for e in logbook %}
         <tr>
           <td class="mono">{{ e['flight_date'] }}</td>
-          <td class="mono">{{ e['flight_no'] }}{% if e['flight_type'] == 'charter' %}
+          <td class="mono">{{ e['flight_no'] }}{% if e['flight_type'] == 'training' %}
+            <span class="badge load-training">Training</span>{% elif e['flight_type'] == 'charter' %}
             <span class="badge load-charter">Charter</span>{% endif %}</td>
           <td class="mono">{{ e['dep_icao'] }} → {{ e['arr_icao'] }}</td>
           <td class="mono">{{ e['aircraft_label'] or '—' }}</td>

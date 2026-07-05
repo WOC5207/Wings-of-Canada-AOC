@@ -32,7 +32,8 @@
       <tr>
         <td>{{ p['created_at'] | datefmt }}</td>
         <td><a class="mono" href="{{ url_for('pilots.profile', user_id=p['user_id']) }}">{{ p['pilot'] }}</a></td>
-        <td class="mono">{{ p['flight_no'] }}{% if p['flight_type'] == 'charter' %}
+        <td class="mono">{{ p['flight_no'] }}{% if p['flight_type'] == 'training' %}
+          <span class="badge load-training">Training</span>{% elif p['flight_type'] == 'charter' %}
           <span class="badge load-charter">Charter</span>{% endif %}</td>
         <td class="mono">{{ p['dep_icao'] }} → {{ p['arr_icao'] }}</td>
         <td class="mono">{{ p['aircraft_label'] or '—' }}</td>

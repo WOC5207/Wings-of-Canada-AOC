@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Flights{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Completed flights</h1>
+</div>
+
+<div class="card">
+  <p class="muted small">Every completed flight across the VA, newest first.
+    Flights tracked with smartCARS carry their recorded ACARS data — landing
+    rate, fuel burn and the in-flight position log; manually logged flights
+    show only what the pilot filed.</p>
+
+  {% if flights %}
+  <div class="table-scroll">
+  <table class="roster-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Pilot</th>
+        <th>Flight</th>
+        <th>Route</th>
+        <th>Aircraft</th>
+        <th>Time</th>
+        <th>Landing</th>
+        <th>Fuel (kg)</th>
+        <th>Log</th>
+        <th>Source</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in flights %}
+      <tr>
+        <td class="mono">{{ f['flight_date'] }}</td>
+        <td><a class="mono" href="{{ url_for('pilots.profile', user_id=f['user_id']) }}">{{ f['pilot'] }}</a></td>
+        <td class="mono">{{ f['flight_no'] }}{% if f['flight_type'] == 'training' %}
+          <span class="badge load-training">Training</span>{% elif f['flight_type'] == 'charter' %}
+          <span class="badge load-charter">Charter</span>{% endif %}</td>
+        <td class="mono">{{ f['dep_icao'] }} → {{ f['arr_icao'] }}</td>
+        <td class="mono">{{ f['aircraft_label'] or '—' }}</td>
+        <td class="mono">{{ f['flight_time_min'] | hours }}</td>
+        <td class="mono">{{ f['landing_rate'] ~ ' fpm' if f['landing_rate'] is not none else '—' }}</td>
+        <td class="mono">{{ '{:,}'.format(f['fuel_used']) if f['fuel_used'] is not none else '—' }}</td>
+        <td class="mono">{{ f['position_count'] ~ ' pts' if f['position_count'] else '—' }}</td>
+        <td>{{ 'smartCARS' if f['source'] == 'smartcars' else 'Manual' }}</td>
+        <td><span class="badge st-{{ f['status'] }}">{{ f['status'] | capitalize }}</span></td>
+        <td class="row-actions">
+          <a class="btn btn-sm" href="{{ url_for('flights.detail', pirep_id=f['id']) }}">Details</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No flights have been completed yet — log one from the
+    <a href="{{ url_for('dispatch.routes') }}">route network</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

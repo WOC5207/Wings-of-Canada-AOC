@@ -83,11 +83,10 @@
   var label = document.getElementById('capacity-label');
   var cargo = document.getElementById('lt-cargo');
   function sync() {
-    // Charter aircraft carry passengers, so they use seats like a PAX jet.
     label.textContent = cargo.checked
       ? 'Cargo capacity (kg)' : 'Passenger capacity (seats)';
   }
-  ['lt-pax', 'lt-cargo', 'lt-charter'].forEach(function (id) {
+  ['lt-pax', 'lt-cargo'].forEach(function (id) {
     document.getElementById(id).addEventListener('change', sync);
   });
   sync();

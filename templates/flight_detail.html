@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ flight['flight_no'] }} · Flight{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>
+    <span class="mono">{{ flight['flight_no'] }}</span>
+    <span class="muted">· {{ flight['dep_icao'] }} → {{ flight['arr_icao'] }}</span>
+    {% if flight['flight_type'] == 'training' %}
+    <span class="badge load-training">Training</span>
+    {% elif flight['flight_type'] == 'charter' %}
+    <span class="badge load-charter">Charter</span>
+    {% endif %}
+    <span class="badge st-{{ flight['status'] }}">{{ flight['status'] | capitalize }}</span>
+  </h1>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('flights.index') }}">← Back to flights</a>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>Flight</h2>
+    <div class="detail-list">
+      <div class="dl-row"><span class="muted">Pilot</span>
+        <a class="mono" href="{{ url_for('pilots.profile', user_id=flight['user_id']) }}">{{ flight['pilot'] }}</a></div>
+      <div class="dl-row"><span class="muted">Callsign</span>
+        <span class="mono">{{ flight['callsign'] }}</span></div>
+      <div class="dl-row"><span class="muted">Date</span>
+        <span class="mono">{{ flight['flight_date'] }}</span></div>
+      <div class="dl-row"><span class="muted">Aircraft</span>
+        <span class="mono">{{ flight['aircraft_label'] or '—' }}</span></div>
+      <div class="dl-row"><span class="muted">Flight time</span>
+        <span class="mono">{{ flight['flight_time_min'] | hours }}</span></div>
+      {% if flight['remarks'] %}
+      <div class="dl-row"><span class="muted">Remarks</span>
+        <span>{{ flight['remarks'] }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>smartCARS data</h2>
+    {% if flight['source'] == 'smartcars' %}
+    <div class="detail-list">
+      <div class="dl-row"><span class="muted">Landing rate</span>
+        <span class="mono">{{ flight['landing_rate'] ~ ' fpm' if flight['landing_rate'] is not none else '—' }}</span></div>
+      <div class="dl-row"><span class="muted">Fuel used</span>
+        <span class="mono">{{ '{:,} kg'.format(flight['fuel_used']) if flight['fuel_used'] is not none else '—' }}</span></div>
+      <div class="dl-row"><span class="muted">Position log</span>
+        <span class="mono">{{ positions | length }} point{{ 's' if positions | length != 1 }}</span></div>
+      <div class="dl-row"><span class="muted">Filed</span>
+        <span class="mono">{{ flight['created_at'] | datefmt }}</span></div>
+    </div>
+    {% else %}
+    <p class="muted">No smartCARS data was recorded for this flight — it was
+      logged manually.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Flight log</h2>
+  {% if positions %}
+  <div class="table-scroll">
+  <table class="roster-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Time (UTC)</th><th>Phase</th><th>Altitude (ft)</th>
+        <th>Heading</th><th>Ground speed (kt)</th><th>Position</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pos in positions %}
+      <tr>
+        <td class="mono">{{ loop.index }}</td>
+        <td class="mono">{{ pos['logged_at'] }}</td>
+        <td>{{ pos['phase'] or '—' }}</td>
+        <td class="mono">{{ '{:,}'.format(pos['altitude']) if pos['altitude'] is not none else '—' }}</td>
+        <td class="mono">{{ pos['heading'] if pos['heading'] is not none else '—' }}</td>
+        <td class="mono">{{ pos['gs'] if pos['gs'] is not none else '—' }}</td>
+        <td class="mono">{{ '%.4f' | format(pos['lat']) }}, {{ '%.4f' | format(pos['lon']) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No in-flight telemetry was recorded for this flight.</p>
+  {% endif %}
+</div>
+{% endblock %}
