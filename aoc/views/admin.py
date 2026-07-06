@@ -1,6 +1,8 @@
 """Administration: create accounts, member tiers, credited totals,
-password resets, account removal."""
+password resets, account removal, logbook backfills."""
+import re
 import secrets
+from datetime import date
 
 from flask import (Blueprint, flash, g, redirect, render_template, request,
                    url_for)
@@ -13,8 +15,13 @@ from ..db import (FOOTER_DEFAULT, LOGO_VARIANTS, NOTAM_LEVELS, UPLOAD_DIR,
                   delete_notam as db_delete_notam, delete_setting, footer_text,
                   get_db, get_setting, hero_text, list_invite_codes, logo_media,
                   set_setting)
+from ..flightnum import (TRAINING_MAX, TRAINING_MIN, callsign as route_callsign,
+                         flight_no, is_training_number)
 from ..security import ROLE_LABELS, ROLE_RANK, role_required
 from .auth import CALLSIGN_DIGITS_RE, EMAIL_RE
+from .dispatch import eligible_aircraft_ids
+
+ICAO_RE = re.compile(r"^[A-Z][A-Z0-9]{3}$")
 
 try:
     from PIL import Image
@@ -271,6 +278,143 @@ def delete_user(user_id):
     flash(f"{user['callsign']} ({user['email']}) was removed, along with "
           "their logbook.", "success")
     return redirect(url_for("admin.users"))
+
+
+@bp.route("/users/<int:user_id>/flights/new", methods=("GET", "POST"))
+@role_required("admin")
+def add_flight(user_id):
+    """Backfill a missing flight straight into one member's logbook. Pilots
+    file flights by flying them with smartCARS; this is the manual fallback
+    for a report that got lost. The entry is born accepted, like any manual
+    log, and counts immediately."""
+    db = get_db()
+    member = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if member is None:
+        flash("Member not found.", "error")
+        return redirect(url_for("admin.users"))
+
+    routes = db.execute("SELECT * FROM routes ORDER BY number").fetchall()
+    fleet = db.execute(
+        """SELECT * FROM aircraft WHERE status = 'active'
+           ORDER BY icao_type, registration"""
+    ).fetchall()
+
+    mode = request.form.get("mode", "scheduled")
+    if mode not in ("scheduled", "training"):
+        mode = "scheduled"
+    form = {
+        "mode": mode,
+        "route_id": request.form.get("route_id", ""),
+        "aircraft_id": request.form.get("aircraft_id", ""),
+        "airport": request.form.get("airport", "").strip().upper(),
+        "training_number": request.form.get("training_number", "").strip(),
+        "flight_date": request.form.get("flight_date", date.today().isoformat()),
+        "hours": request.form.get("hours", "").strip(),
+        "minutes": request.form.get("minutes", "").strip(),
+        "remarks": request.form.get("remarks", "").strip(),
+    }
+
+    if request.method == "POST":
+        errors = []
+        route, number, dep_icao, arr_icao = None, None, "", ""
+
+        aircraft = next(
+            (a for a in fleet if str(a["id"]) == form["aircraft_id"]), None
+        )
+        if aircraft is None:
+            errors.append("Pick the aircraft that flew the flight.")
+
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", form["flight_date"]):
+            errors.append("Pick a valid flight date.")
+        try:
+            hours = int(form["hours"] or 0)
+            minutes = int(form["minutes"] or 0)
+            total_min = hours * 60 + minutes
+            if not (0 <= minutes <= 59) or hours < 0:
+                raise ValueError
+            if total_min <= 0:
+                errors.append("Flight time must be greater than zero.")
+            if total_min > 24 * 60:
+                errors.append("Flight time cannot exceed 24 hours.")
+        except ValueError:
+            errors.append("Flight time must be whole numbers (minutes 0-59).")
+            total_min = 0
+
+        if mode == "scheduled":
+            route = next(
+                (r for r in routes if str(r["id"]) == form["route_id"]), None
+            )
+            if route is None:
+                errors.append("Pick the scheduled route that was flown.")
+            else:
+                number = route["number"]
+                dep_icao, arr_icao = route["dep_icao"], route["arr_icao"]
+                # Same eligibility rule the pilot faces in smartCARS: the load
+                # type must match and the airframe must have the range.
+                allowed = eligible_aircraft_ids(
+                    db, route["route_type"], route["distance_nm"]
+                )
+                if aircraft is not None and aircraft["id"] not in allowed:
+                    errors.append(
+                        "That aircraft isn't eligible for this route — wrong "
+                        "type or not enough range."
+                    )
+        else:  # training — a local session: one airport, any active aircraft
+            if not ICAO_RE.match(form["airport"]):
+                errors.append("Training airport must be a 4-character ICAO code.")
+            # A local training flight begins and ends at the same airport.
+            dep_icao = arr_icao = form["airport"]
+            try:
+                number = int(form["training_number"])
+            except ValueError:
+                number = None
+            if number is None or not is_training_number(number):
+                errors.append(
+                    f"Training flight number must be between {TRAINING_MIN} "
+                    f"and {TRAINING_MAX}."
+                )
+
+        if not errors:
+            db.execute(
+                """INSERT INTO pireps
+                   (user_id, route_id, aircraft_id, flight_no, callsign,
+                    dep_icao, arr_icao, aircraft_label, flight_type, flight_date,
+                    flight_time_min, remarks)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (member["id"], route["id"] if route else None, aircraft["id"],
+                 flight_no(number), route_callsign(number),
+                 dep_icao, arr_icao,
+                 f"{aircraft['registration']} ({aircraft['icao_type']})",
+                 mode, form["flight_date"], total_min, form["remarks"]),
+            )
+            db.commit()
+            flash(f"Flight {flight_no(number)} {dep_icao} → {arr_icao} added "
+                  f"to {member['callsign']}'s logbook.", "success")
+            return redirect(url_for("pilots.profile", user_id=member["id"]))
+        for e in errors:
+            flash(e, "error")
+
+    routes_view = [
+        {"id": r["id"],
+         "label": f"{flight_no(r['number'])}  {r['dep_icao']} → {r['arr_icao']}"}
+        for r in routes
+    ]
+    fleet_view = []
+    for a in fleet:
+        if a["load_type"] == "cargo":
+            capacity = f"{a['cargo_capacity_kg']:,} kg" if a["cargo_capacity_kg"] else ""
+        else:
+            capacity = f"{a['pax_capacity']} seats" if a["pax_capacity"] else ""
+        label = f"{a['registration']} · {a['variant'] or a['icao_type']}"
+        if capacity:
+            label += f" · {capacity}"
+        fleet_view.append({"id": a["id"], "label": label})
+
+    return render_template(
+        "admin_flight_new.html", member=member, form=form,
+        routes=routes_view, fleet=fleet_view,
+        training_min=TRAINING_MIN, training_max=TRAINING_MAX,
+    )
 
 
 @bp.route("/invites")

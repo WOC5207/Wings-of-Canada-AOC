@@ -7,7 +7,8 @@ from flask import (Blueprint, flash, g, redirect, render_template, request,
 
 from ..airports import estimate, search as search_airports
 from ..db import get_db
-from ..flightnum import SeriesFullError, allocate_one, callsign, flight_no
+from ..flightnum import (SeriesFullError, allocate_one, allocate_pair,
+                         callsign, flight_no)
 from ..security import login_required, role_required
 
 bp = Blueprint("dispatch", __name__, url_prefix="/dispatch")
@@ -256,13 +257,18 @@ def new_route():
                 r["number"] for r in db.execute("SELECT number FROM routes").fetchall()
             }
             try:
-                # Each leg is numbered independently on its own departure hub.
-                out_n = allocate_one(form["dep"], form["arr"], used)
+                # With a return leg the two numbers are a coupled pair in the
+                # outbound's series: return = outbound - 1 when the route
+                # departs Canada, + 1 when it departs abroad. A one-way route
+                # is numbered on its own departure hub as before.
+                if create_return:
+                    out_n, ret_n = allocate_pair(form["dep"], form["arr"], used)
+                else:
+                    out_n = allocate_one(form["dep"], form["arr"], used)
                 # Only the outbound leg carries the scheduled departure time;
                 # the return leaves at an unspecified later time.
                 legs = [("outbound", out_n, form["dep"], form["arr"], form["dep_time"])]
                 if create_return:
-                    ret_n = allocate_one(form["arr"], form["dep"], used | {out_n})
                     legs.append(("return", ret_n, form["arr"], form["dep"], ""))
             except SeriesFullError as exc:
                 errors.append(str(exc))
@@ -407,7 +413,8 @@ def delete_route(route_id):
     if row is None:
         flash("Route not found.", "error")
     else:
-        # Legs are numbered independently, so delete just this one.
+        # Each leg is its own row (even when numbered as a pair), so delete
+        # just this one; the partner keeps flying under its own number.
         db.execute("DELETE FROM routes WHERE id = ?", (route_id,))
         db.commit()
         flash(f"Route {flight_no(row['number'])} "

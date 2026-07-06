@@ -14,6 +14,13 @@
   </h1>
   <div class="actions">
     <a class="btn btn-ghost" href="{{ url_for('flights.index') }}">← Back to flights</a>
+    {% if g.user['role'] == 'admin' %}
+    <form method="post" action="{{ url_for('pilots.delete_pirep', pirep_id=flight['id']) }}"
+          onsubmit="return confirm('Delete flight {{ flight['flight_no'] }} {{ flight['dep_icao'] }} → {{ flight['arr_icao'] }} by {{ flight['pilot'] }}? This removes it from their logbook.');">
+      <input type="hidden" name="next" value="flights">
+      <button class="btn btn-danger" type="submit">Delete flight</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 

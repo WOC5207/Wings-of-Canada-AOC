@@ -35,7 +35,7 @@
           <td class="mono">{{ e['aircraft_label'] or '—' }}</td>
           <td class="mono">{{ e['flight_time_min'] | hours }}</td>
           <td>
-            {% if g.user['id'] == pilot['id'] or g.user['role'] == 'admin' %}
+            {% if g.user['role'] == 'admin' %}
             <form method="post" action="{{ url_for('pilots.delete_pirep', pirep_id=e['id']) }}"
                   onsubmit="return confirm('Delete this logbook entry?');">
               <button class="btn btn-sm btn-danger" type="submit">×</button>
