@@ -12,7 +12,6 @@
       <button class="btn" type="submit">Search</button>
     </form>
     {% endif %}
-    <a class="btn" href="{{ url_for('pilots.log_flight', mode='training') }}">Dispatch local training</a>
     <a class="btn btn-primary" href="{{ url_for('dispatch.new_route') }}">+ New route</a>
   </div>
 </div>
@@ -117,7 +116,6 @@
       <td class="mono">{{ r.duration_min | hours if r.duration_min else '—' }}</td>
       {% if is_admin %}<td>{{ r.creator or '—' }}</td>{% endif %}
       <td class="row-actions">
-        <a class="btn btn-sm" href="{{ url_for('pilots.log_flight', route_id=r.id) }}">Log flight</a>
         <a class="btn btn-sm" href="{{ r.simbrief_url }}" target="_blank" rel="noopener">SimBrief</a>
         {% if is_admin %}
         <a class="btn btn-sm" href="{{ url_for('dispatch.edit_route', route_id=r.id) }}">Edit</a>

@@ -48,6 +48,13 @@
         <td><span class="badge st-{{ f['status'] }}">{{ f['status'] | capitalize }}</span></td>
         <td class="row-actions">
           <a class="btn btn-sm" href="{{ url_for('flights.detail', pirep_id=f['id']) }}">Details</a>
+          {% if g.user['role'] == 'admin' %}
+          <form method="post" action="{{ url_for('pilots.delete_pirep', pirep_id=f['id']) }}"
+                onsubmit="return confirm('Delete flight {{ f['flight_no'] }} {{ f['dep_icao'] }} → {{ f['arr_icao'] }} by {{ f['pilot'] }}? This removes it from their logbook.');">
+            <input type="hidden" name="next" value="flights">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+          </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -55,8 +62,9 @@
   </table>
   </div>
   {% else %}
-  <p class="muted">No flights have been completed yet — log one from the
-    <a href="{{ url_for('dispatch.routes') }}">route network</a>.</p>
+  <p class="muted">No flights have been completed yet — book a route from the
+    <a href="{{ url_for('dispatch.routes') }}">route network</a> and fly it
+    with smartCARS.</p>
   {% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Add flight · {{ member['callsign'] }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Add a flight <span class="muted">· {{ member['callsign'] }}</span></h1>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('pilots.profile', user_id=member['id']) }}">View profile</a>
+    <a class="btn btn-ghost" href="{{ url_for('admin.users') }}">← Back to members</a>
+  </div>
+</div>
+
+<div class="card narrow-form">
+  <p class="muted small">Pilots file flights by flying them with smartCARS —
+    use this only to backfill one that went missing. The entry lands in
+    {{ member['callsign'] }}'s logbook already accepted and counts immediately.</p>
+
+  {% if not fleet %}
+  <p class="muted">There are no active aircraft in the fleet — add one in
+    <a href="{{ url_for('fleet.index') }}">Fleet</a> first.</p>
+  {% else %}
+  <form method="post" class="stack">
+    <label>
+      <span class="lbl">Flight type</span>
+      <select name="mode" id="mode-select">
+        <option value="scheduled" {{ 'selected' if form.mode == 'scheduled' }}>Scheduled route</option>
+        <option value="training" {{ 'selected' if form.mode == 'training' }}>Local training</option>
+      </select>
+    </label>
+
+    <label data-mode="scheduled">
+      <span class="lbl">Route</span>
+      <select name="route_id" class="mono">
+        <option value="">Pick a route…</option>
+        {% for r in routes %}
+        <option value="{{ r.id }}" {{ 'selected' if form.route_id == r.id|string }}>{{ r.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="field-row" data-mode="training">
+      <label>
+        <span class="lbl">Airport (ICAO)</span>
+        <input name="airport" value="{{ form.airport }}" maxlength="4"
+               class="mono upper" placeholder="CYVR" data-airport-ac>
+      </label>
+      <label>
+        <span class="lbl">Training number <span class="muted">({{ training_min }}–{{ training_max }})</span></span>
+        <input name="training_number" value="{{ form.training_number }}"
+               inputmode="numeric" maxlength="4" class="mono" placeholder="9900">
+      </label>
+    </div>
+
+    <label>
+      <span class="lbl">Aircraft</span>
+      <select name="aircraft_id" class="mono" required>
+        <option value="">Pick an aircraft…</option>
+        {% for a in fleet %}
+        <option value="{{ a.id }}" {{ 'selected' if form.aircraft_id == a.id|string }}>{{ a.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="field-row">
+      <label>
+        <span class="lbl">Flight date</span>
+        <input type="date" name="flight_date" value="{{ form.flight_date }}" required>
+      </label>
+      <label>
+        <span class="lbl">Flight time</span>
+        <div class="time-row">
+          <input name="hours" value="{{ form.hours }}" inputmode="numeric"
+                 placeholder="h" required>
+          <span>:</span>
+          <input name="minutes" value="{{ form.minutes }}" inputmode="numeric"
+                 placeholder="mm" required>
+        </div>
+      </label>
+    </div>
+
+    <label>
+      <span class="lbl">Remarks <span class="muted">(optional)</span></span>
+      <input name="remarks" value="{{ form.remarks }}" maxlength="200"
+             placeholder="Backfilled — smartCARS report was lost">
+    </label>
+
+    <button class="btn btn-primary" type="submit">Add to logbook</button>
+  </form>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var mode = document.getElementById('mode-select');
+  if (!mode) return;
+  function sync() {
+    [].forEach.call(document.querySelectorAll('[data-mode]'), function (el) {
+      el.style.display = (el.getAttribute('data-mode') === mode.value) ? '' : 'none';
+    });
+  }
+  mode.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='airport-ac.js') }}"></script>
+{% endblock %}

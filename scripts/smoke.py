@@ -119,20 +119,22 @@ def in_series(n, digit, parity):
 
 
 # CYYZ->KJFK is the first route created -> ids 1 (outbound) and 2 (return).
+# Returns are coupled to the outbound: a route departing Canada takes
+# outbound - 1, a route departing abroad takes outbound + 1.
 page, r1_out, r1_ret = new_route("CYYZ", "KJFK")
-check("CYYZ->KJFK international: 4xxx even outbound, 4xxx odd return",
-      in_series(r1_out, 4, 0) and in_series(r1_ret, 4, 1))
+check("CYYZ->KJFK international: 4xxx even outbound, return is outbound-1",
+      in_series(r1_out, 4, 0) and r1_ret == r1_out - 1)
 
-# Toronto domestic departure = 5xxx; the return is numbered on its OWN
-# departure city (Vancouver) = 1xxx, not coupled to the outbound.
+# Toronto domestic departure = 5xxx; the coupled return stays in the same
+# series (no longer numbered on its own departure city).
 page, out, ret = new_route("CYYZ", "CYVR")
 check("CYYZ->CYVR domestic outbound in Toronto 5xxx (even)", in_series(out, 5, 0))
-check("return CYVR->CYYZ in Vancouver 1xxx (even)", in_series(ret, 1, 0))
+check("coupled return CYVR->CYYZ is outbound-1", ret == out - 1)
 
-# Both legs abroad -> both odd, numbered independently.
+# Both legs abroad -> odd outbound; an international departure pairs upward.
 page, out, ret = new_route("EGLL", "VHHH")
-check("EGLL->VHHH abroad both odd in 9xxx",
-      in_series(out, 9, 1) and in_series(ret, 9, 1) and out != ret)
+check("EGLL->VHHH abroad: odd 9xxx outbound, return is outbound+1",
+      in_series(out, 9, 1) and ret == out + 1)
 
 # Numbers are randomized, not always x000.
 page, out, _ = new_route("CYUL", "LFPG", create_return=False)
@@ -240,26 +242,13 @@ _, page = call(admin, "/dispatch/new", {
 check("half-filled departure time rejected",
       "departure time is required" in page.lower() and "Route created" not in page)
 
-# --- pirep ----------------------------------------------------------------
+# --- admin flight backfill (member management) ------------------------------
+# Manual logging left the dispatch screen entirely: flights are filed by flying
+# them with smartCARS, and an admin backfills a lost one from member management.
 status, page = call(admin, "/dispatch/")
 check("routes page lists network", f"CW{r1_out:04d}" in page and "SimBrief" in page)
-check("route rows offer a Log flight button", "/pilots/log?route_id=" in page)
-
-# A route row's button opens the log form locked to that scheduled route.
-status, page = call(admin, "/pilots/log?route_id=1")
-check("route row opens a locked scheduled log form",
-      "Log a scheduled flight" in page and f"CW{r1_out:04d}" in page
-      and 'name="training_number"' not in page)
-
-# A scheduled route only offers its eligible aircraft (in-range, matching type).
-# Route 1 (CYYZ->KJFK, 300 nm pax) offers both pax tails but not the freighter.
-check("locked log form lists only eligible aircraft",
-      "C-FWOC" in page and "C-GENA" not in page)
-
-# A bare /pilots/log has nothing to log: pilots are sent to the dispatch list.
-status, page = call(admin, "/pilots/log")
-check("bare log page redirects to the route network",
-      "Route network" in page and "Pick a scheduled flight" in page)
+check("route network has no manual-log buttons",
+      "Log flight" not in page and "Dispatch local training" not in page)
 
 # The new-route form no longer carries a manual aircraft picker — eligibility is
 # automatic from aircraft range.
@@ -270,56 +259,64 @@ check("new-route form loads for admins",
 check("new-route form has no manual aircraft picker",
       'class="fp-check"' not in page)
 
-# Scheduled PIREP: route 1 (CYYZ->KJFK) is pax; aircraft id 1 (C-FWOC) is eligible.
-status, page = call(admin, "/pilots/log", {
+# The add-flight tool targets one member and offers both flight types.
+status, page = call(admin, "/admin/users/1/flights/new")
+check("add-flight tool opens from member management",
+      "Add a flight" in page and "WOC1" in page and 'name="route_id"' in page
+      and 'name="training_number"' in page and 'name="aircraft_id"' in page)
+
+status, page = call(admin, "/admin/users/999999/flights/new")
+check("add-flight for an unknown member returns to the roster",
+      "Member not found" in page)
+
+# Scheduled backfill: route 1 (CYYZ->KJFK) is pax; aircraft 1 (C-FWOC) is
+# eligible. The flight lands in the target member's logbook, born accepted.
+status, page = call(admin, "/admin/users/1/flights/new", {
     "mode": "scheduled", "route_id": "1", "aircraft_id": "1",
     "flight_date": "2026-06-10", "hours": "1", "minutes": "25",
     "remarks": "Smoke test leg",
 })
-check("scheduled PIREP filed", "logged" in page and f"CW{r1_out:04d}" in page)
+check("scheduled flight backfilled into the logbook",
+      "added to WOC1" in page and f"CW{r1_out:04d}" in page)
 check("profile shows 1:25", "1:25" in page)
 
 # The freighter (id 2, cargo) is not eligible for a passenger route and is refused.
-status, page = call(admin, "/pilots/log", {
+status, page = call(admin, "/admin/users/1/flights/new", {
     "mode": "scheduled", "route_id": "1", "aircraft_id": "2",
     "flight_date": "2026-06-10", "hours": "1", "minutes": "0", "remarks": "",
 })
-check("ineligible aircraft refused on a scheduled route",
-      "eligible for this route" in page and "logged" not in page)
+check("ineligible aircraft refused on a scheduled backfill",
+      "eligible for this route" in page and "added to" not in page)
 
-# Local Training PIREP: same airport, any aircraft, pilot-set 9900-9999 number.
-# The "Dispatch local training" button on the route network pre-selects it.
-status, page = call(admin, "/pilots/log?mode=training")
-check("dispatch-training link opens a training-only form",
-      "Dispatch a local training flight" in page and 'name="training_number"' in page
-      and 'name="route_id"' not in page)
-# The aircraft picker card sits outside the <form>; every radio must be
-# linked back with form="training-form" or the selection is silently dropped.
-check("training picker radios are linked to the training form",
-      'id="training-form"' in page
-      and page.count('form="training-form"') == page.count('class="fp-check"'))
+# A scheduled backfill needs a route.
+status, page = call(admin, "/admin/users/1/flights/new", {
+    "mode": "scheduled", "route_id": "", "aircraft_id": "1",
+    "flight_date": "2026-06-10", "hours": "1", "minutes": "0", "remarks": "",
+})
+check("scheduled backfill without a route is rejected",
+      "Pick the scheduled route" in page)
 
-# A local training flight departs and arrives at the same airport.
-status, page = call(admin, "/pilots/log", {
+# Local training backfill: same airport, any aircraft, 9900-9999 number.
+status, page = call(admin, "/admin/users/1/flights/new", {
     "mode": "training", "airport": "CYVR", "training_number": "9905",
     "aircraft_id": "3", "flight_date": "2026-06-10", "hours": "0",
     "minutes": "55", "remarks": "Circuits",
 })
-check("training PIREP filed with a 99xx number",
-      "logged" in page and "CW9905" in page)
+check("training flight backfilled with a 99xx number",
+      "added to WOC1" in page and "CW9905" in page)
 check("training flight is a local same-airport session",
       "CYVR → CYVR" in page)
 
 # 9900 is the lower boundary of the training block (used to be scheduled).
-status, page = call(admin, "/pilots/log", {
+status, page = call(admin, "/admin/users/1/flights/new", {
     "mode": "training", "airport": "CYYC", "training_number": "9900",
     "aircraft_id": "3", "flight_date": "2026-06-11", "hours": "1",
     "minutes": "5", "remarks": "Boundary training",
 })
-check("training number 9900 accepted", "logged" in page and "CW9900" in page)
+check("training number 9900 accepted", "added to WOC1" in page and "CW9900" in page)
 
 # A training number outside the reserved block is rejected.
-status, page = call(admin, "/pilots/log", {
+status, page = call(admin, "/admin/users/1/flights/new", {
     "mode": "training", "airport": "CYVR", "training_number": "8000",
     "aircraft_id": "3", "flight_date": "2026-06-10", "hours": "1",
     "minutes": "0", "remarks": "",
@@ -370,20 +367,32 @@ check("dashboard latest-flights feed is scrollable", 'class="flights-scroll"' in
 status, page = call(member, "/admin/users")
 check("standard member cannot open admin", "requires Administrator access" in page)
 
-# Route 2 (the return leg of CYYZ->KJFK) is pax; C-FWOC (aircraft 1) is eligible.
-status, page = call(member, "/pilots/log", {
+# The add-flight backfill tool is admin-only; the form and the POST are both
+# refused for a standard member.
+status, page = call(member, "/admin/users/2/flights/new")
+check("standard member cannot open the add-flight tool",
+      "requires Administrator access" in page)
+
+status, page = call(member, "/admin/users/2/flights/new", {
     "mode": "scheduled", "route_id": "2", "aircraft_id": "1",
     "flight_date": "2026-06-10", "hours": "1", "minutes": "30", "remarks": "",
 })
-check("member can log scheduled flights", "logged" in page)
+check("standard member cannot backfill flights",
+      "requires Administrator access" in page)
 
-# A standard pilot can also file their own local training flight (any aircraft).
-status, page = call(member, "/pilots/log", {
-    "mode": "training", "airport": "CYYC", "training_number": "9912",
-    "aircraft_id": "2", "flight_date": "2026-06-10", "hours": "1",
-    "minutes": "5", "remarks": "Pilot training",
+status, page = call(member, "/dispatch/")
+check("standard member gets no manual-log buttons on the route network",
+      "Log flight" not in page and "Dispatch local training" not in page)
+
+# The tool exists precisely so an admin can restore a member's missing flight:
+# backfill the CYYZ<->KJFK return leg (route 2) into the member's logbook.
+status, page = call(admin, "/admin/users/2/flights/new", {
+    "mode": "scheduled", "route_id": "2", "aircraft_id": "1",
+    "flight_date": "2026-06-12", "hours": "1", "minutes": "30",
+    "remarks": "smartCARS report was lost",
 })
-check("member can file a local training flight", "logged" in page and "CW9912" in page)
+check("admin backfills a missing flight for a member",
+      "added to WOC0042" in page and f"CW{r1_ret:04d}" in page and "1:30" in page)
 
 # --- admin: edit an existing route's dispatch details ------------------------
 # Route 1 is the CYYZ->KJFK outbound. Editing is admin-only.
@@ -484,6 +493,24 @@ check("manual flight detail shows the no-data empty states",
 status, page = call(admin, "/flights/999999")
 check("unknown flight redirects to the list", "Flight not found" in page)
 
+# Deleting a completed flight is admin-only, offered on the flights tab.
+status, page = call(admin, "/flights/")
+check("admin sees a Delete button on the flights tab", "/pirep/" in page)
+status, page = call(member, "/flights/")
+check("standard member sees no Delete button on the flights tab",
+      "/pirep/" not in page)
+
+status, page = call(member, "/pilots/pirep/3/delete", {"next": "flights"})
+check("standard member cannot delete a flight",
+      "requires Administrator access" in page)
+
+# PIREP 3 is the admin's CW9900 boundary-training log.
+status, page = call(admin, "/pilots/pirep/3/delete", {"next": "flights"})
+check("admin delete returns to the flights tab",
+      "deleted" in page and "Completed flights" in page)
+status, page = call(admin, "/flights/")
+check("deleted flight leaves the flights list", "CW9900" not in page)
+
 # --- fleet: detail page and aircraft images ---------------------------------
 status, page = call(admin, "/fleet/")
 check("fleet registration links to the detail page", 'href="/fleet/1"' in page)
@@ -503,6 +530,7 @@ check("aircraft image upload with no file is rejected",
 status, page = call(admin, "/admin/users")
 check("admin roster lists members", "WOC1" in page and "Member management" in page)
 check("admin roster offers an add-pilot link", "/admin/users/new" in page)
+check("admin roster offers the per-member add-flight tool", "/flights/new" in page)
 check("admin roster has sort controls",
       "Flight Hours" in page and "Flights Completed" in page and "Date Joined" in page)
 
@@ -515,7 +543,7 @@ check("admin roster accepts a sort option", status == 200)
 status, page = call(admin, "/admin/users/2/edit")
 check("admin can open the pilot edit page",
       'name="adj_flights"' in page and 'name="join_date"' in page
-      and 'name="name"' in page)
+      and 'name="name"' in page and "/flights/new" in page)
 
 status, page = call(admin, "/admin/users/2/edit", {"role": "admin"})
 check("admin can promote a member", "Saved changes" in page)
@@ -567,17 +595,18 @@ check("admin creates a test account with no email",
       "Created WOC0099 on the Standard tier" in page)
 
 # --- admin: credit flights / hours via the edit page ------------------------
-# Member (user 2) has logged 2 flights / 2:35; credit +10 flights and +5:00.
+# Member (user 2) has the one backfilled flight (1:30); credit +10 flights and
+# +5:00 on top for a displayed total of 6:30.
 status, page = call(admin, "/admin/users/2/edit", {
     "adj_flights": "10", "adj_hours": "5", "adj_minutes": "0",
 })
 check("admin credits extra flights and hours", "Saved changes" in page)
 
 status, page = call(admin, "/pilots/2")
-check("credited totals show on the pilot profile", "7:35" in page)
+check("credited totals show on the pilot profile", "6:30" in page)
 
 status, page = call(admin, "/pilots/")
-check("roster shows hours to one decimal place", "7.6" in page and "7:35" not in page)
+check("roster shows hours to one decimal place", "6.5" in page and "6:30" not in page)
 
 status, page = call(admin, "/admin/users/2/edit", {"adj_flights": "-1"})
 check("negative credit rejected", "cannot be negative" in page)
@@ -606,7 +635,7 @@ status, page = call(admin, "/pilots/2")
 check("a high-time pilot ranks as Fleet Captain", "Fleet Captain" in page)
 check("rank badge is colour-coded by rank", "rank-fleet-captain" in page)
 
-# Hours alone don't promote: 600 h but only 2 logged flights stays Student.
+# Hours alone don't promote: 600 h but a single logged flight stays Student.
 call(admin, "/admin/users/2/edit", {
     "adj_flights": "0", "adj_hours": "600", "adj_minutes": "0",
 })

@@ -8,6 +8,7 @@
     <span class="badge role-{{ user['role'] }}">{{ user['role'] | rolelabel }}</span>
   </h1>
   <div class="actions">
+    <a class="btn" href="{{ url_for('admin.add_flight', user_id=user['id']) }}">+ Add flight</a>
     <a class="btn" href="{{ url_for('pilots.profile', user_id=user['id']) }}">View profile</a>
     <a class="btn btn-ghost" href="{{ url_for('admin.users') }}">← Back to members</a>
   </div>

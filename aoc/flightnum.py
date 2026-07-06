@@ -18,19 +18,29 @@ the DEPARTURE hub wins. Toronto's digit depends on whether the leg is domestic:
     8 - a US airport (no Canadian airport involved)
     9 - everything else (no Canadian or US airport involved)
 
-Each leg is numbered independently (the outbound and return are NOT a coupled
-pair). A round-trip is two separate allocations, so e.g. CYYZ->CYVR is a Toronto
-domestic number (5xxx) while its return CYVR->CYYZ is a Vancouver number (1xxx).
+A route created WITH its return leg is numbered as a coupled pair: the
+outbound follows the rules below and the return sits right next to it in the
+same series —
 
-Parity ("flights departing from Canada must use an even number, including 0"):
+    route departs Canada -> return = outbound - 1
+    route departs abroad -> return = outbound + 1
+
+A route created without a return (allocate_one) is numbered on its own.
+
+Parity ("flights departing from Canada must use an even number, including 0")
+applies to the outbound leg:
 
     leg departs Canada -> even number
     leg departs abroad -> odd number
 
+so on a Canada<->abroad round trip the paired return keeps the convention too
+(even - 1 is odd, odd + 1 is even). On a domestic-domestic or abroad-abroad
+pair the return simply takes the adjacent number.
+
 Within a series a free number of the right parity is chosen AT RANDOM (rather
 than always the lowest), so route numbers are spread across the series instead
-of clustering at x000. Keeping Canada-departing legs even and abroad-departing
-legs odd means a leg and its reverse can never collide.
+of clustering at x000. Every allocation checks the set of numbers already in
+use, so pairs and singles can never collide.
 """
 import random as _random
 
@@ -134,6 +144,35 @@ def allocate_one(dep: str, arr: str, used: set[int], rng=_random) -> int:
             f"No free flight numbers left in the {digit}xxx series for {dep}-{arr}."
         )
     return rng.choice(candidates)
+
+
+def allocate_pair(dep: str, arr: str, used: set[int], rng=_random) -> tuple[int, int]:
+    """Pick numbers for an outbound leg and its return as a coupled pair.
+
+    The outbound follows the normal series/parity rules; the return is the
+    outbound minus one when the route departs Canada, plus one when it departs
+    abroad. Only outbound numbers whose pair-mate is also free AND inside the
+    same series block are considered (so e.g. a 9899 outbound can never push
+    its return into the 9900+ training block).
+    """
+    dep, arr = dep.upper(), arr.upper()
+    digit = classify(dep, arr)
+    parity = 0 if is_canadian(dep) else 1
+    step = -1 if is_canadian(dep) else 1
+
+    block = series_range(digit)
+    candidates = [
+        n for n in block
+        if n % 2 == parity and n not in used
+        and (n + step) in block and (n + step) not in used
+    ]
+    if not candidates:
+        raise SeriesFullError(
+            f"No free flight-number pairs left in the {digit}xxx series "
+            f"for {dep}-{arr}."
+        )
+    n = rng.choice(candidates)
+    return n, n + step
 
 
 def flight_no(n: int) -> str:
