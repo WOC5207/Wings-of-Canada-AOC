@@ -4,9 +4,9 @@ services:
     container_name: wings-of-canada-aoc
     restart: unless-stopped
     ports:
-      # host:container - if 8080 is taken on your NAS, change the LEFT side
-      # (e.g. "8081:8080") and point the DSM reverse proxy at that port.
-      - "8080:8080"
+      # host:container - the app is reached on port 5207 on the NAS; point
+      # the DSM reverse proxy at 5207. Change the LEFT side if 5207 is taken.
+      - "5207:8080"
     volumes:
       # All VA data (database + session key) lives here. Back this folder up.
       - ./data:/app/data
@@ -15,7 +15,7 @@ services:
       - AOC_BEHIND_PROXY=1
       # Send session cookies only over HTTPS. Leave at 1 once your domain
       # works. Set to 0 TEMPORARILY if you want to sign in directly via
-      # http://NAS-IP:8080 before the reverse proxy is configured -
+      # http://NAS-IP:5207 before the reverse proxy is configured -
       # otherwise the browser drops the cookie and sign-in loops.
       - AOC_SECURE_COOKIES=1
       # Container timezone (affects log timestamps only).
